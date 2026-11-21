@@ -246,6 +246,8 @@ local Cfg = {
         Players    = { Enabled = true, Fill = true, Self = false, Color = C(0, 255, 0) },
         Twisteds   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },
         Tendrils   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Sprout's tendrils (SproutTendril)
+        BlotHands  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Blot's hands (the Arm in each BlotHand_R / BlotHand_L)
+        IchorPuddles = { Enabled = true, Fill = true, Color = C(255, 0, 0) },   -- everything in the room's Puddles folder except Twisted Barnaby
         Generators = { Enabled = true, Fill = true, HideCompleted = false, Brusha = true, DuoOne = true, Colors = {
             Incomplete = C(255, 0, 0), InProgress = C(255, 255, 0), Completed = C(0, 255, 0), Connie = C(0, 255, 255), Brusha = C(170, 0, 255),
             DuoOne = C(255, 165, 0),      -- duo machine with only one player working on it
@@ -434,6 +436,29 @@ do
                 local fa = room:FindFirstChild("FreeArea")
                 if fa then addTendrils(fa) end
                 addTendrils(room)
+            end
+            if cats.BlotHands.Enabled then
+                -- each Blot hand sits in a BlotHandZone_N; the thing worth outlining is the visible Arm MeshPart (the rest of the hand is invisible)
+                for _, z in ipairs(room:GetChildren()) do
+                    if z.Name:find("^BlotHandZone") then
+                        for _, d in ipairs(z:GetDescendants()) do
+                            if d.Name == "Arm" and d:IsA("BasePart") and d.Parent and d.Parent.Name:find("^BlotHand") then
+                                add(d, cats.BlotHands.Color, "BlotHands")
+                            end
+                        end
+                    end
+                end
+            end
+            -- the Puddles folder holds Ichor puddles and also Twisted Barnaby (TBarnaby_v3), who belongs to the Twisted ESP
+            local puddles = room:FindFirstChild("Puddles")
+            if puddles then
+                for _, c in ipairs(puddles:GetChildren()) do
+                    if c.Name == "TBarnaby_v3" then
+                        if cats.Twisteds.Enabled then add(c, cats.Twisteds.Color, "Twisteds") end
+                    elseif cats.IchorPuddles.Enabled then
+                        add(c, cats.IchorPuddles.Color, "IchorPuddles")
+                    end
+                end
             end
             if cats.Generators.Enabled then
                 local f = room:FindFirstChild("Generators")
@@ -1791,9 +1816,42 @@ do
     function SP.fullbrightLevel() return fb.level end
     function SP.setFullbrightLevel(v) fb.level = math.clamp(tonumber(v) or 100, 0, 100) end
 
+    ------------------------------------------------------------------
+    -- ICHOR SPLATS (World tab). Stepping in an Ichor puddle splats images across the whole screen: they are the Splat labels inside the
+    -- IchorScreen frame (PlayerGui.ScreenGui.IchorScreen). While this is on that frame is kept hidden; turning it off gives it back.
+    ------------------------------------------------------------------
+    local ich = { on = false, frame = nil, orig = true, conn = nil, hidden = false }
+    local function ichRelease()
+        if ich.conn then ich.conn:Disconnect(); ich.conn = nil end
+        local f = ich.frame
+        if f and f.Parent and ich.hidden then pcall(function() f.Visible = ich.orig end) end
+        ich.frame, ich.hidden = nil, false
+    end
+    local function ichStep()
+        if not ich.on then
+            if ich.frame then ichRelease() end
+            return
+        end
+        local pg = LP:FindFirstChild("PlayerGui")
+        local sg = pg and pg:FindFirstChild("ScreenGui")
+        local f = sg and sg:FindFirstChild("IchorScreen")
+        if f ~= ich.frame then          -- first time, or the game rebuilt its GUI
+            ichRelease()
+            if not (f and f:IsA("GuiObject")) then return end
+            ich.frame, ich.orig = f, f.Visible
+            ich.conn = f:GetPropertyChangedSignal("Visible"):Connect(function() if ich.on and f.Visible then f.Visible = false end end)
+        end
+        if f.Visible then f.Visible = false end
+        ich.hidden = true
+    end
+    connect(RunService.RenderStepped, function() pcall(ichStep) end)
+    function SP.hideIchorOn() return ich.on end
+    function SP.setHideIchor(v) ich.on = v and true or false end
+
     function SP.Unload()
         pcall(boRelease, true)
         pcall(fbRelease, true)
+        pcall(ichRelease)
         pcall(SP.setNoclip, false)
         pcall(function() RunService:UnbindFromRenderStep(RS_NAME) end)
         pcall(function() if ar.holding then ar.holding = false; if toggleLike() then if clientSprinting(statsCache or LP) then fireAction("Pressed") end else fireAction("Released") end end end)
@@ -1869,16 +1927,17 @@ end
 --#endregion movement-engine
 --#region automation-engine
 ----------------------------------------------------------------------
--- AUTOMATION ENGINE  (auto skill checks + instant success + Swimmy Barnaby bot)
+-- AUTOMATION ENGINE  (auto skill checks + instant calibration success + Swimmy Barnaby bot)
 -- All skill checks listen to one InputAction ("SkillCheckTap"); firing its Pressed
 -- signal is the same as pressing the key (no window focus, no latency).
 ----------------------------------------------------------------------
 local Auto = {
     Default = false, Circle = false, Treadmill = false, Swimmy = false, Instant = false,
+    InstantKinds = { default = true, circle = true, treadmill = true },   -- which machine types Instant Calibration Success answers; the others are played normally
     Snap = true,            -- nudge the marker/circle to the exact middle of gold before tapping
     TapRate = 10,           -- treadmill taps per second
     InstantDelay = 0,       -- seconds to wait before answering an instant check
-    Feedback = true,        -- Instant Success also shows "Great Job!" and plays the hit sounds
+    Feedback = true,        -- Instant Calibration Success also shows "Great Job!" and plays the hit sounds
     SwimmyHide = true,      -- hide the seaweed
     SwimmyCoins = true,     -- pull each coin onto Barnaby as it arrives
     SwimmyHideCoins = false,
@@ -1902,25 +1961,31 @@ do
         return false
     end
 
-    -- ---------------------------------------------------------- INSTANT SUCCESS
+    -- ---------------------------------------------------------- INSTANT CALIBRATION SUCCESS
     local fbToken = 0
-    local function feedback()      -- same text, gradient and sounds the real gold hit shows
+    local function feedback()      -- the same "Great Job!" and sounds a real gold hit gives
         local aud = try(require, ReplicatedStorage.SharedUtils.Audio)
         if aud then
             pcall(function() aud:PlayOne("Sounds.UI.SkillCheck.Correct") end)
             pcall(function() aud:PlayOne("Sounds.UI.SkillCheck.GoldAreaHit") end)
         end
-        local sg = pgui() and pgui():FindFirstChild("ScreenGui")
-        local menu = sg and sg:FindFirstChild("Menu")
-        local msg = menu and menu:FindFirstChild("SkillCheckMessage")
+        -- the post-alpha HUD shows the message on PlayerGui.Skillchecks.Shared.Result, which listens to the "Skillchecks" HudPort:
+        -- asking the port for a "great" result makes the game show its own message (text, gradient, fade) exactly as it does for a real hit
+        local hp = try(require, ReplicatedStorage.SharedUtils.HudPort)
+        local port = hp and try(hp.get, "Skillchecks")
+        if port and pcall(function() port:fire("result", "great") end) then return end
+        -- fallback if the port is ever unavailable: draw it on that label ourselves
+        local sk = pgui() and pgui():FindFirstChild("Skillchecks")
+        local shared = sk and sk:FindFirstChild("Shared")
+        local msg = shared and shared:FindFirstChild("Result")
         if not msg then return end
         fbToken = fbToken + 1
         local my = fbToken
         task.spawn(function()
             pcall(function()
                 msg.Text = "Great Job!"
-                if msg:FindFirstChild("UIGradient") then msg.UIGradient.Enabled = false end
-                if msg:FindFirstChild("UIGradientWin") then msg.UIGradientWin.Enabled = true end
+                if msg:FindFirstChild("Lose") then msg.Lose.Enabled = false end
+                if msg:FindFirstChild("Win") then msg.Win.Enabled = true end
                 msg.TextTransparency = 0; msg.TextStrokeTransparency = 0
                 msg.Visible = true
                 task.wait(1)
@@ -1939,10 +2004,10 @@ do
     local origInvoke, myWrap
     local function makeWrap(orig)
         return function(a1, a2, a3)
-            if Auto.Instant and a1 ~= "cancel" then
-                local kind = (type(a2) == "table" and a2.type) or "default"
+            local kind = (type(a2) == "table" and a2.type) or "default"
+            if Auto.Instant and a1 ~= "cancel" and Auto.InstantKinds[kind] ~= false then
                 if Auto.InstantDelay > 0 then task.wait(Auto.InstantDelay) end
-                Auto.Status = "Instant success (" .. tostring(kind) .. ")"
+                Auto.Status = "Instant calibration success (" .. tostring(kind) .. ")"
                 if Auto.Feedback then feedback() end
                 if kind == "treadmill" then return true end   -- the treadmill server only accepts true
                 return "supercomplete"
@@ -1967,24 +2032,44 @@ do
     end
 
     -- ---------------------------------------------------------- DEFAULT (bar + marker)
+    -- Post-alpha HUD: PlayerGui.Skillchecks.Horizontal holds Marker, RequiredArea (the green calibration area, a hit anywhere in it passes)
+    -- and GoldArea (a bright strip inside it that gives "Great Job!"). The game judges the marker's centre, so the tap is timed for the middle of
+    -- the gold strip: that satisfies both. Positions are fractions of the bar and honour each part's anchor point.
     local dflt = { last = nil, fired = false }
+    local function barSpan(o)        -- left and right edge of a part, as fractions of the bar
+        local w = o.Size.X.Scale
+        local l = o.Position.X.Scale - w * o.AnchorPoint.X
+        return l, l + w
+    end
     local function stepDefault()
-        local sg = pgui() and pgui():FindFirstChild("ScreenGui")
-        local m = sg and sg:FindFirstChild("Menu")
-        local f = m and m:FindFirstChild("SkillCheckFrame")
+        local sk = pgui() and pgui():FindFirstChild("Skillchecks")
+        local f = sk and sk:FindFirstChild("Horizontal")
         if not (f and f.Visible) then dflt.last = nil; dflt.fired = false; return end
-        local marker, gold = f:FindFirstChild("Marker"), f:FindFirstChild("GoldArea")
-        if not (marker and gold) then return end
-        local x = marker.Position.X.Scale
+        local marker, gold, req = f:FindFirstChild("Marker"), f:FindFirstChild("GoldArea"), f:FindFirstChild("RequiredArea")
+        if not (marker and (gold or req)) then return end
+        local mOff = marker.Size.X.Scale * (0.5 - marker.AnchorPoint.X)        -- marker position -> marker centre
+        local x = marker.Position.X.Scale + mOff
         local last = dflt.last; dflt.last = x
         if dflt.fired then if x < 0.02 then dflt.fired = false end return end
         if not last or x <= last then return end
-        local gs, gw = gold.Position.X.Scale, gold.Size.X.Scale
-        local center, v = gs + gw / 2, x - last
-        if x > gs + gw + v then dflt.fired = true; return end          -- missed the window, wait for the next check
+        -- aim at the gold strip when it lies inside the required area (it normally does), otherwise at the required area
+        local tl, tr
+        if gold then
+            local gl, gr = barSpan(gold)
+            if req then
+                local rl, rr = barSpan(req)
+                if gl >= rl - 0.001 and gr <= rr + 0.001 then tl, tr = gl, gr else tl, tr = rl, rr end
+            else
+                tl, tr = gl, gr
+            end
+        else
+            tl, tr = barSpan(req)
+        end
+        local center, v = (tl + tr) / 2, x - last
+        if x > tr + v then dflt.fired = true; return end          -- missed the window, wait for the next check
         if x + v * 0.5 >= center then
-            if Auto.Snap and (x < gs or x > gs + gw) then
-                marker.Position = UDim2.new(center, 0, marker.Position.Y.Scale, marker.Position.Y.Offset)
+            if Auto.Snap and (x < tl or x > tr) then
+                marker.Position = UDim2.new(center - mOff, 0, marker.Position.Y.Scale, marker.Position.Y.Offset)
             end
             dflt.fired = true
             pressTap()
@@ -4478,7 +4563,7 @@ end
 
 -- official highlight colors used in the game (name, r, g, b)
 local GAME_COLORS = {
-    { "Astro Blue", 120, 200, 255 }, { "Brusha Purple", 153, 81, 137 }, { "Eclipse Blue", 150, 180, 220 }, { "Soulvester Blue", 129, 215, 180 },
+    { "Astro Blue", 120, 200, 255 }, { "Brusha Purple", 153, 81, 137 }, { "Dessa Green", 0, 255, 38 }, { "Eclipse Blue", 150, 180, 220 }, { "Soulvester Blue", 129, 215, 180 },
     { "Vee Green", 100, 255, 97 }, { "Egg Radar Pink", 255, 192, 203 }, { "Festive Lights Yellow", 255, 215, 0 },
     { "Fishing Rod Blue", 61, 151, 220 }, { "Memory Locket Green", 168, 255, 160 }, { "Party Popper Pink", 255, 132, 203 },
     { "Trick or Treat Door Orange", 255, 150, 40 },
@@ -4562,7 +4647,8 @@ local function openColorPicker(c)
         Label(card, "Game Colors", UDim2.fromOffset(14, y), UDim2.fromOffset(200, 18), { size = 13, color = T.dim })
         local cols, sz, gap = 10, 26, 4
         local gy = y + 22
-        local nameLbl = Label(card, "Tap a color to use it", UDim2.fromOffset(14, gy + 3 * (sz + gap)), UDim2.fromOffset(cw - 28, 18), { size = 13, color = T.dim })
+        local rows = math.ceil(#GAME_COLORS / cols)
+        local nameLbl = Label(card, "Tap a color to use it", UDim2.fromOffset(14, gy + rows * (sz + gap)), UDim2.fromOffset(cw - 28, 18), { size = 13, color = T.dim })
         for i, g in ipairs(GAME_COLORS) do
             local r, k = math.floor((i - 1) / cols), (i - 1) % cols
             local col = C(g[2], g[3], g[4])
@@ -4574,7 +4660,7 @@ local function openColorPicker(c)
             end)
             sw.MouseButton1Click:Connect(function() ui("click"); setColor(col) end)
         end
-        y = gy + 3 * (sz + gap) + 26
+        y = gy + rows * (sz + gap) + 26
     end
     if c.rainbow then
         Label(card, "Rainbow", UDim2.fromOffset(14, y), UDim2.fromOffset(120, 24), { size = 14 })
@@ -4666,9 +4752,12 @@ end
 
 builders.toggle = function(parent, c, order)
     local row = rowFor(parent, order)
-    local _, holder = layoutRow(row, c.text, false, T.kind == "dandy" and 112 or 56)
+    local fixedW = T.kind == "dandy" and 112 or 56
+    local _, holder = layoutRow(row, c.text, false, fixedW)
     local tw = ToggleW(holder, c.get(), function(v) c.set(v) end)
     row.MouseButton1Click:Connect(function() tw.flip() end)
+    local bindId = UI.curBindId
+    if bindId and UI.binds then UI.binds.decorate(row, c, bindId, fixedW) end     -- right-click menu for keybinds and on-screen buttons
 end
 
 builders.slider = function(parent, c, order)
@@ -4961,6 +5050,7 @@ UI.hints = {
     ["Sync Animation Speed With Stats"] = "Walk, run and extraction animations match your speed. Idle is left alone.",
     ["Ability Animations Follow Speed"] = "Ability animations match your speed while you move, or your decode speed while you extract.",
     ["Fullbright"] = "See everything. Raises the ambient light, removes shadows and fog.",
+    ["Hide Ichor Splats"] = "Hides the ink that covers your screen when you step in an Ichor puddle.",
     ["Fullbright Brightness"] = "How bright the ambient light is while Fullbright is on.",
     ["Walk Speed (Units Added)/All Floors"] = "Extra walk speed on every floor.",
     ["Walk Speed (Units Added)/Odd Floors"] = "Extra walk speed, odd floors only.",
@@ -4986,7 +5076,10 @@ UI.hints = {
     ["Continuous Coins"] = "Collects coins nonstop. The server may get picky if it's too fast.",
     ["Continuous Coins Per Second"] = "Lower this if your progress stops going up.",
     ["Auto Run On Treadmill Machines"] = "Holds sprint for you while you work a treadmill.",
-    ["Instant Skill Check Success"] = "Skips the minigame with a perfect hit. Not subtle, but effective.",
+    ["Instant Calibration Success"] = "Skips the minigame with a perfect hit. Not subtle, but effective.",
+    ["Affect Default Machines"] = "Instant Calibration Success answers default (bar and marker) machines.",
+    ["Affect Circle Machines"] = "Instant Calibration Success answers circle machines.",
+    ["Affect Treadmill Machines"] = "Instant Calibration Success answers treadmill machines.",
     ["Response Delay (Seconds)"] = "How long it waits before answering. A little delay looks less robotic.",
     -- Skill Checks
     ["More Skill Checks (Outside Machines)"] = "Extra skill checks when you're not on a machine, because normal ones weren't stress enough.",
@@ -5125,8 +5218,13 @@ local function renderSection(parent, sec, order)
         local b = builders[c.t]
         if b then
             UI.curHint = UI.hintFor(sec, c)
+            UI.curBindId = nil
+            if c.t == "toggle" and UI.binds and not c.nobind then
+                UI.curBindId = UI.binds.track(UI.current, sec, c)
+                UI.curHint = UI.binds.hint(UI.curHint)
+            end
             local ok, err = pcall(b, f, c, i)
-            UI.curHint = nil
+            UI.curHint, UI.curBindId = nil, nil
             if not ok then warn("[Tony Script Palace] control error (" .. tostring(c.t) .. " '" .. tostring(c.text) .. "'): " .. tostring(err)) end
         end
     end
@@ -5152,7 +5250,7 @@ local function buildRail(navs, selKey, tabId)
             New("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingTop = UDim.new(0, 6) }, h)
         end
         order += 1
-        local b = Button(Rail, sec.title, UDim2.new(1, -2, 0, T.kind == "dandy" and 34 or 32), (sec._key == selKey) and "blue" or "glass", function()
+        local b = Button(Rail, sec.rail or sec.title, UDim2.new(1, -2, 0, T.kind == "dandy" and 34 or 32), (sec._key == selKey) and "blue" or "glass", function()
             if UI.sel[tabId] == sec._key then return end
             UI.sel[tabId] = sec._key
             renderPage()
@@ -5290,7 +5388,7 @@ local function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) 
 
 local function resetESPColors()
     local c, d = Cfg.Categories, DEF.Categories
-    for _, k in ipairs({ "Players", "Twisteds", "Tendrils", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
+    for _, k in ipairs({ "Players", "Twisteds", "Tendrils", "BlotHands", "IchorPuddles", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
     c.StarPillows.OtherColor = d.StarPillows.OtherColor
     c.StarPillows.TwistedColor = d.StarPillows.TwistedColor
     c.Generators.Colors = deepcopy(d.Generators.Colors)
@@ -5326,7 +5424,9 @@ local function buildESPPage()
     } }
     secs[#secs + 1] = { title = "Toons", controls = { tg("Enabled", cats.Players, "Enabled"), tg("Fill", cats.Players, "Fill"), tg("Highlight Myself", cats.Players, "Self"), cl("Color", cats.Players, "Color", DEF.Categories.Players) } }
     secs[#secs + 1] = { title = "Twisteds", controls = { tg("Enabled", cats.Twisteds, "Enabled"), tg("Fill", cats.Twisteds, "Fill"), cl("Color", cats.Twisteds, "Color", DEF.Categories.Twisteds) } }
-    secs[#secs + 1] = { title = "Sprout Tendrils", controls = { tg("Enabled", cats.Tendrils, "Enabled"), tg("Fill", cats.Tendrils, "Fill"), cl("Color", cats.Tendrils, "Color", DEF.Categories.Tendrils) } }
+    secs[#secs + 1] = { title = "Twisted Sprout's Tendrils", controls = { tg("Enabled", cats.Tendrils, "Enabled"), tg("Fill", cats.Tendrils, "Fill"), cl("Color", cats.Tendrils, "Color", DEF.Categories.Tendrils) } }
+    secs[#secs + 1] = { title = "Twisted Blot's Hands", controls = { tg("Enabled", cats.BlotHands, "Enabled"), tg("Fill", cats.BlotHands, "Fill"), cl("Color", cats.BlotHands, "Color", DEF.Categories.BlotHands) } }
+    secs[#secs + 1] = { title = "Ichor Puddles", controls = { tg("Enabled", cats.IchorPuddles, "Enabled"), tg("Fill", cats.IchorPuddles, "Fill"), cl("Color", cats.IchorPuddles, "Color", DEF.Categories.IchorPuddles) } }
     secs[#secs + 1] = { title = "Machines", controls = {
         tg("Enabled", cats.Generators, "Enabled"), tg("Fill", cats.Generators, "Fill"),
         tg("Hide Completed Machines", cats.Generators, "HideCompleted"),
@@ -5339,22 +5439,6 @@ local function buildESPPage()
         tg("Enabled", cats.Doors, "Enabled"), tg("Fill", cats.Doors, "Fill"), cl("Color", cats.Doors, "Color", DEF.Categories.Doors), tg("Hide Used Doors", cats.Doors, "HideUsed"),
     } }
     secs[#secs + 1] = { title = "Bookshelves", controls = { tg("Enabled", cats.Bookshelves, "Enabled"), tg("Fill", cats.Bookshelves, "Fill"), cl("Color", cats.Bookshelves, "Color", DEF.Categories.Bookshelves) } }
-
-    local PILLOW_NAMES = { All = "Everyone's", Mine = "Only Mine", Others = "Only Others'" }
-    local PILLOW_MODES = { ["Everyone's"] = "All", ["Only Mine"] = "Mine", ["Only Others'"] = "Others" }
-    local sp = cats.StarPillows
-    secs[#secs + 1] = { title = "Star Pillows", controls = {
-        tg("Enabled", sp, "Enabled"), tg("Fill", sp, "Fill"),
-        { t = "dropdown", text = "Highlight", get = function() return PILLOW_NAMES[sp.Mode] or "Everyone's" end,
-            options = function() return { "Everyone's", "Only Mine", "Only Others'" } end,
-            set = function(o) sp.Mode = PILLOW_MODES[o] or "All"; espDirty = true; refreshPage() end },
-        cl("Color", sp, "Color", DEF.Categories.StarPillows),
-        tg("Different Color For Others", sp, "OtherDiff"),
-        cl("Others' Color", sp, "OtherColor", DEF.Categories.StarPillows),
-        tg("Show Twisted Astro's Pillows", sp, "ShowTwisted"),
-        cl("Twisted Astro's Color", sp, "TwistedColor", DEF.Categories.StarPillows),
-        { t = "text", text = "Highlight (Everyone's / Only Mine / Only Others') is for Toon pillows. Twisted Astro's pillows do their own thing, with their own switch and color."},
-    } }
 
     local it = cats.Items
     local itemCtl = {
@@ -5377,6 +5461,22 @@ local function buildESPPage()
         end
         secs[#secs + 1] = { title = "Item Colors", controls = ic }
     end
+
+    local PILLOW_NAMES = { All = "Everyone's", Mine = "Only Mine", Others = "Only Others'" }
+    local PILLOW_MODES = { ["Everyone's"] = "All", ["Only Mine"] = "Mine", ["Only Others'"] = "Others" }
+    local sp = cats.StarPillows
+    secs[#secs + 1] = { title = "Star Pillows", controls = {
+        tg("Enabled", sp, "Enabled"), tg("Fill", sp, "Fill"),
+        { t = "dropdown", text = "Highlight", get = function() return PILLOW_NAMES[sp.Mode] or "Everyone's" end,
+            options = function() return { "Everyone's", "Only Mine", "Only Others'" } end,
+            set = function(o) sp.Mode = PILLOW_MODES[o] or "All"; espDirty = true; refreshPage() end },
+        cl("Color", sp, "Color", DEF.Categories.StarPillows),
+        tg("Different Color For Others", sp, "OtherDiff"),
+        cl("Others' Color", sp, "OtherColor", DEF.Categories.StarPillows),
+        tg("Show Twisted Astro's Pillows", sp, "ShowTwisted"),
+        cl("Twisted Astro's Color", sp, "TwistedColor", DEF.Categories.StarPillows),
+        { t = "text", text = "Highlight (Everyone's / Only Mine / Only Others') is for Toon pillows. Twisted Astro's pillows do their own thing, with their own switch and color."},
+    } }
     return secs
 end
 
@@ -5525,7 +5625,7 @@ local function buildConfigsPage()
             empty = "No configs yet. Type a name above and press Save.",
             onSelect = function(n) cfgState.name = n; refreshPage() end },
         { t = "buttons", items = { { label = "Refresh List", fn = function() refreshPage(); toast("Config list refreshed.", "info") end } } },
-        { t = "text", text = "Configs live in workspace/" .. CFG_DIR .. ". They keep all of your settings and every on/off switch: ESP, Movement, World, Automation, Pursuer, Fun, Sound and the Customizer's options, so loading one can switch things on straight away. Sound setups, Customizer configs and saved Pursuers are their own libraries: a config remembers which one you were using. Look and feel (the Appearance tab) is saved on its own and is not part of a config."},
+        { t = "text", text = "Configs live in workspace/" .. CFG_DIR .. ". They keep all of your settings and every on/off switch: ESP, Movement, World, Automation, Pursuer, Fun, Sound, the Customizer's options and your keybinds and on-screen buttons, so loading one can switch things on straight away. Sound setups, Customizer configs and saved Pursuers are their own libraries: a config remembers which one you were using. Look and feel (the Appearance tab) is saved on its own and is not part of a config."},
     } }
     return secs
 end
@@ -5682,6 +5782,11 @@ local function buildWorldPage()
             { t = "slider", text = "Fullbright Brightness", min = 0, max = 100, dec = 0, step = 1,
                 get = function() return SP.fullbrightLevel() end, set = function(v) SP.setFullbrightLevel(v) end },
         } },
+        { title = "Ichor Splats", controls = {
+            { t = "text", text = "Stepping in an Ichor puddle splats ink across your whole screen. This hides those splats. Turn it off and they come back."},
+            { t = "toggle", text = "Hide Ichor Splats", get = function() return SP.hideIchorOn() end,
+                set = function(v) SP.setHideIchor(v); toast(v and "Ichor splats hidden." or "Ichor splats back.", "info") end },
+        } },
         { title = "Game Info", controls = {
             { t = "text", text = "Live info from the Dandy's World API Library. It only has anything to say inside a run."},
             { t = "readout", text = "Floor", get = apiField(function(a) return a.GetGameInfo("floor") end) },
@@ -5772,10 +5877,13 @@ local function buildAutomationPage()
             { t = "text", text = "Pull Coins brings each coin to Barnaby as it approaches. Instant Coins grabs each one the moment it spawns. Coin For Every Seaweed gives you a coin for every seaweed gap Barnaby passes, even the ones that spawned no coin. Continuous Coins keeps collecting non-stop at the rate below. The server may ignore coins that come too fast, so if your progress stops going up, lower the rate. Hiding happens before the game shows an obstacle, so nothing flashes on screen."},
         } },
         { title = "Auto Run (Treadmill Machines)", controls = autoRunControls() },
-        { title = "Instant Success", controls = {
-            { t = "text", text = "Answers the server's skill check instantly as a perfect hit (supercomplete) and skips the minigame entirely. Works on default, circle and treadmill checks."},
-            tog("Instant Skill Check Success", "Instant"),
+        { title = "Instant Calibration Success", controls = {
+            { t = "text", text = "Answers the server's calibration check instantly as a perfect hit (supercomplete) and skips the minigame entirely. The three Affect toggles choose which machines it answers: turn one off to play that kind of machine yourself while the others stay instant."},
+            tog("Instant Calibration Success", "Instant"),
             { t = "toggle", text = "Great Job Text And Sounds", get = function() return Auto.Feedback end, set = function(v) Auto.Feedback = v end },
+            { t = "toggle", text = "Affect Default Machines", get = function() return Auto.InstantKinds.default end, set = function(v) Auto.InstantKinds.default = v end },
+            { t = "toggle", text = "Affect Circle Machines", get = function() return Auto.InstantKinds.circle end, set = function(v) Auto.InstantKinds.circle = v end },
+            { t = "toggle", text = "Affect Treadmill Machines", get = function() return Auto.InstantKinds.treadmill end, set = function(v) Auto.InstantKinds.treadmill = v end },
             { t = "slider", text = "Response Delay (Seconds)", min = 0, max = 2, dec = 2, step = 0.05,
                 get = function() return Auto.InstantDelay end, set = function(v) Auto.InstantDelay = v end },
         } },
@@ -5796,10 +5904,15 @@ Features.world = {
 }
 
 Features.automation = {
-    serialize = function() return { Snap = Auto.Snap, TapRate = Auto.TapRate, InstantDelay = Auto.InstantDelay, Feedback = Auto.Feedback, SwimmyHide = Auto.SwimmyHide, SwimmyCoins = Auto.SwimmyCoins, SwimmyHideCoins = Auto.SwimmyHideCoins, SwimmyInstantCoins = Auto.SwimmyInstantCoins, SwimmyCoinEvery = Auto.SwimmyCoinEvery, SwimmyRapid = Auto.SwimmyRapid, SwimmyRapidRate = Auto.SwimmyRapidRate } end,
+    serialize = function() return { Snap = Auto.Snap, TapRate = Auto.TapRate, InstantDelay = Auto.InstantDelay, Feedback = Auto.Feedback, InstantKinds = { default = Auto.InstantKinds.default, circle = Auto.InstantKinds.circle, treadmill = Auto.InstantKinds.treadmill }, SwimmyHide = Auto.SwimmyHide, SwimmyCoins = Auto.SwimmyCoins, SwimmyHideCoins = Auto.SwimmyHideCoins, SwimmyInstantCoins = Auto.SwimmyInstantCoins, SwimmyCoinEvery = Auto.SwimmyCoinEvery, SwimmyRapid = Auto.SwimmyRapid, SwimmyRapidRate = Auto.SwimmyRapidRate } end,
     apply = function(data)               -- the auto skill check switches are saved by the "switches" entry
         if type(data) ~= "table" then return end
         if type(data.Snap) == "boolean" then Auto.Snap = data.Snap end
+        if type(data.InstantKinds) == "table" then
+            for _, k in ipairs({ "default", "circle", "treadmill" }) do
+                if type(data.InstantKinds[k]) == "boolean" then Auto.InstantKinds[k] = data.InstantKinds[k] end
+            end
+        end
         for _, k in ipairs({ "Feedback", "SwimmyHide", "SwimmyHideCoins", "SwimmyCoins", "SwimmyInstantCoins", "SwimmyCoinEvery", "SwimmyRapid" }) do
             if type(data[k]) == "boolean" then Auto[k] = data[k] end
         end
@@ -10465,6 +10578,411 @@ end)()
 end)()
 
 --#endregion page-sound
+--#region binds
+----------------------------------------------------------------------
+-- KEYBINDS AND ON-SCREEN BUTTONS FOR TOGGLES
+-- Right-click any toggle in the hub for a menu: set a keybind, add an on-screen button. A toggle is found again by an id made of its tab,
+-- its section and its text, so binds survive restarts and are saved inside configs (Features.binds).
+--  * keybinds use the same key capture as the hub key, and never fire while you are typing in a text box
+--  * on-screen buttons live in their own ScreenGui, are drawn with the skin's own Button, and are rebuilt when the skin changes.
+--    Click = flip the toggle, drag = move, right-click = menu (remove). They light up while the toggle is on.
+----------------------------------------------------------------------
+local Binds = { map = {}, reg = {}, btns = {}, gui = nil, menuGui = nil, flash = nil }
+UI.binds = Binds
+
+local BIND_AMBIGUOUS = { Enabled = true, Fill = true }     -- toggle names that repeat in every section: the section name is added in front
+
+local function bindTab(tabId)
+    for _, t in ipairs(UI.tabs) do if t.id == tabId then return t end end
+end
+
+-- called for every toggle a page draws: remembers it (so a hotkey can flip it) and returns its id
+function Binds.track(tabId, sec, c)
+    local label = tostring(c.text)
+    if BIND_AMBIGUOUS[label] then label = tostring(sec.title) .. ": " .. label end
+    local id = tostring(tabId) .. "|" .. tostring(sec.title) .. "|" .. tostring(c.text)
+    Binds.reg[id] = { c = c, label = label, tab = tabId }
+    local m = Binds.map[id]
+    if m then m.label = label end
+    return id
+end
+
+function Binds.hint(h)
+    local tip = "Right-click for a keybind or an on-screen button."
+    return (h and h ~= "") and (h .. "  " .. tip) or tip
+end
+
+-- finds a toggle by id. If its page has not been drawn this session, the page's sections are built once to find it.
+function Binds.resolve(id)
+    if Binds.reg[id] then return Binds.reg[id] end
+    local tabId = id:match("^([^|]*)|")
+    local tab = tabId and bindTab(tabId)
+    if not tab or tabId == "binds" then return nil end
+    local ok, secs = pcall(tab.build)
+    if not ok or type(secs) ~= "table" then return nil end
+    for _, sec in ipairs(secs) do
+        for _, c in ipairs(sec.controls or {}) do
+            if c.t == "toggle" then Binds.track(tabId, sec, c) end
+        end
+    end
+    return Binds.reg[id]
+end
+
+local function bindEntry(id)
+    local m = Binds.map[id]
+    if not m then
+        local r = Binds.reg[id]
+        m = { label = r and r.label or id }
+        Binds.map[id] = m
+    end
+    return m
+end
+local function bindPrune(id)
+    local m = Binds.map[id]
+    if m and not m.key and not m.btn then Binds.map[id] = nil end
+end
+
+local function bindGuiOn()
+    if Binds.gui and Binds.gui.Parent then return Binds.gui end
+    if not T then return nil end            -- the skin is not built yet (a config auto-loads before the hub exists)
+    local g = New("ScreenGui", { Name = "TonyScriptPalaceButtons", ResetOnSpawn = false, IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 998 })
+    g.Parent = guiParent()
+    if T.kind == "aero" then g.DescendantAdded:Connect(lowerize) end
+    Binds.gui = g
+    return g
+end
+
+-- a small message in the top middle of the screen, so a hotkey gives feedback even while the hub is hidden
+function Binds.notice(msg)
+    local g = bindGuiOn()
+    if not g then return end
+    if Binds.flash then pcall(function() Binds.flash:Destroy() end) end
+    local f = New("TextLabel", { Text = msg, Font = T.F.bold, TextSize = 17, TextColor3 = WHITE, BackgroundColor3 = C(20, 20, 24),
+        BackgroundTransparency = 0.2, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 58),
+        Size = UDim2.fromOffset(math.clamp(#msg * 9 + 36, 150, 560), 34), ZIndex = 5 }, g)
+    corner(f, 8); stroke(f, T.accent, 2, 0)
+    Binds.flash = f
+    task.delay(1.7, function() if Binds.flash == f then Binds.flash = nil end; if f.Parent then f:Destroy() end end)
+end
+
+function Binds.flip(id)
+    local e = Binds.resolve(id)
+    local label = (e and e.label) or (Binds.map[id] and Binds.map[id].label) or "That toggle"
+    if not e then Binds.notice(label .. " isn't available right now."); return end
+    local ok, cur = pcall(e.c.get)
+    if not ok then Binds.notice(label .. " isn't available right now."); return end
+    pcall(e.c.set, not cur)
+    local ok2, now = pcall(e.c.get)
+    Binds.notice(label .. ": " .. ((ok2 and now) and "On" or "Off"))
+    if UI.visible then pcall(refreshPage) end        -- so an open page shows the new state
+end
+
+-- a keyboard key was pressed: flips every toggle bound to it. Returns true when something was bound to that key.
+function Binds.onKey(name)
+    local hit = false
+    for id, m in pairs(Binds.map) do
+        if m.key == name then hit = true; task.spawn(Binds.flip, id) end
+    end
+    return hit
+end
+
+-- ---------------------------------------------------------------- the menu (lives in its own ScreenGui so it also works with the hub hidden)
+local function bindCloseMenu()
+    if Binds.menuGui then pcall(function() Binds.menuGui:Destroy() end); Binds.menuGui = nil end
+end
+local function bindMenu(title, items)
+    bindCloseMenu()
+    if not T then return end
+    local g = New("ScreenGui", { Name = "TonyScriptPalaceMenu", ResetOnSpawn = false, IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 1001 })
+    g.Parent = guiParent()
+    if T.kind == "aero" then g.DescendantAdded:Connect(lowerize) end
+    Binds.menuGui = g
+    local blocker = New("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, g)
+    blocker.MouseButton1Click:Connect(bindCloseMenu)
+    blocker.MouseButton2Click:Connect(bindCloseMenu)
+    local w, bh, gap, th = 250, 32, 4, 26
+    local h = th + #items * (bh + gap) + gap
+    local vs = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+    local m = UIS:GetMouseLocation()
+    local x = math.clamp(m.X, 4, math.max(vs.X - w - 4, 4))
+    local y = math.clamp(m.Y, 4, math.max(vs.Y - h - 4, 4))
+    local panel = New("Frame", { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h), BackgroundColor3 = C(28, 28, 34),
+        BackgroundTransparency = 0.06, BorderSizePixel = 0, Active = true }, blocker)
+    corner(panel, 10); stroke(panel, T.accent, 2, 0)
+    New("TextLabel", { BackgroundTransparency = 1, Text = title, Font = T.F.bold, TextSize = 15, TextColor3 = WHITE, TextTruncate = Enum.TextTruncate.AtEnd,
+        TextXAlignment = AL, Position = UDim2.fromOffset(10, 3), Size = UDim2.fromOffset(w - 20, th - 4) }, panel)
+    for i, it in ipairs(items) do
+        Button(panel, it.text, UDim2.fromOffset(w - gap * 2, bh), it.style or "glass", function()
+            bindCloseMenu()
+            if it.fn then it.fn() end
+        end, { pos = UDim2.fromOffset(gap, th + gap + (i - 1) * (bh + gap)), size = 14 })
+    end
+end
+
+-- ---------------------------------------------------------------- on-screen buttons
+local function bindNextPos()
+    local n = 0
+    for _, m in pairs(Binds.map) do if m.btn then n += 1 end end
+    return { x = 0.1 + 0.11 * math.floor(n / 8), y = 0.22 + 0.075 * (n % 8) }
+end
+
+local function bindIsOn(id)
+    local e = Binds.reg[id]
+    if not e then return false end
+    local ok, v = pcall(e.c.get)
+    return ok and v and true or false
+end
+
+local function bindMakeButton(g, id, m)
+    Binds.resolve(id)                   -- finds the toggle even when its page was never opened this session
+    local on = bindIsOn(id)
+    local label = m.label or id
+    local b = Button(g, label, UDim2.fromOffset(math.clamp(#label * 8 + 30, 100, 300), 38), on and "blue" or "glass", nil, { size = 15 })
+    b.AnchorPoint = Vector2.new(0.5, 0.5)
+    b.Position = UDim2.fromScale(m.btn.x, m.btn.y)
+    Binds.btns[id] = { obj = b, on = on }
+    local moved = false
+    b.InputBegan:Connect(function(i)
+        if isPress(i) then
+            moved = false
+            local start = Vector2.new(i.Position.X, i.Position.Y)
+            local origin = b.AbsolutePosition + b.AbsoluteSize / 2
+            activeDrag = function(pos)
+                local d = Vector2.new(pos.X, pos.Y) - start
+                if not moved and d.Magnitude < 6 then return end
+                moved = true
+                local vs = g.AbsoluteSize
+                local np = origin + d
+                m.btn.x, m.btn.y = math.clamp(np.X / math.max(vs.X, 1), 0.02, 0.98), math.clamp(np.Y / math.max(vs.Y, 1), 0.02, 0.98)
+                b.Position = UDim2.fromScale(m.btn.x, m.btn.y)
+            end
+        elseif i.UserInputType == Enum.UserInputType.MouseButton2 then
+            bindMenu(label, {
+                { text = "Remove This Button", style = "red", fn = function() m.btn = nil; bindPrune(id); Binds.rebuild(); if UI.visible then pcall(refreshPage) end end },
+                { text = m.key and ("Change Keybind (" .. m.key .. ")") or "Set Keybind", fn = function() Binds.captureKey(id) end },
+                { text = "Cancel" },
+            })
+        end
+    end)
+    b.MouseButton1Click:Connect(function()
+        if moved then moved = false; return end
+        Binds.flip(id)
+    end)
+end
+
+function Binds.rebuild()
+    if Binds.gui then pcall(function() Binds.gui:Destroy() end); Binds.gui = nil end
+    table.clear(Binds.btns)
+    if not T then return end
+    local any = false
+    for _, m in pairs(Binds.map) do if m.btn then any = true end end
+    if not any then return end
+    local g = bindGuiOn()
+    if not g then return end
+    local ids = {}
+    for id, m in pairs(Binds.map) do if m.btn then ids[#ids + 1] = id end end
+    table.sort(ids)
+    for _, id in ipairs(ids) do pcall(bindMakeButton, g, id, Binds.map[id]) end
+end
+
+function Binds.destroy()
+    bindCloseMenu()
+    if Binds.gui then pcall(function() Binds.gui:Destroy() end); Binds.gui = nil end
+end
+
+-- the buttons show the toggle's state, which can change from anywhere (the hub, a config, a hotkey)
+task.spawn(function()
+    while alive do
+        task.wait(0.25)
+        if Binds.gui and Binds.gui.Parent and not activeDrag then
+            for id, b in pairs(Binds.btns) do
+                if bindIsOn(id) ~= b.on then pcall(Binds.rebuild); break end
+            end
+        end
+    end
+end)
+
+-- ---------------------------------------------------------------- set a key / add or remove a button
+function Binds.captureKey(id)
+    local m0 = Binds.map[id]
+    local r = Binds.reg[id]
+    local label = (r and r.label) or (m0 and m0.label) or id
+    Binds.notice("Press a key for " .. label .. "  (Esc cancels)")
+    listening = function(name)
+        if not name then Binds.notice("Keybind cancelled."); return end
+        if name == S.keybind then Binds.notice(name .. " is the key that shows and hides the hub. Pick another."); return end
+        local m = bindEntry(id)
+        m.key = name
+        Binds.notice(label .. " is now on " .. name)
+        if UI.visible then pcall(refreshPage) end
+    end
+end
+
+function Binds.addButton(id)
+    local m = bindEntry(id)
+    if not m.btn then m.btn = bindNextPos() end
+    Binds.rebuild()
+    if UI.visible then pcall(refreshPage) end
+end
+
+function Binds.removeButton(id)
+    local m = Binds.map[id]
+    if m then m.btn = nil; bindPrune(id) end
+    Binds.rebuild()
+    if UI.visible then pcall(refreshPage) end
+end
+
+function Binds.clearKey(id)
+    local m = Binds.map[id]
+    if m then m.key = nil; bindPrune(id) end
+    if UI.visible then pcall(refreshPage) end
+end
+
+-- the right-click menu of a toggle
+function Binds.menu(id)
+    local r = Binds.reg[id]
+    local m = Binds.map[id]
+    local items = { { text = (m and m.key) and ("Change Keybind (" .. m.key .. ")") or "Set Keybind", fn = function() Binds.captureKey(id) end } }
+    if m and m.key then items[#items + 1] = { text = "Clear Keybind", fn = function() Binds.clearKey(id) end } end
+    if m and m.btn then items[#items + 1] = { text = "Remove On-Screen Button", style = "red", fn = function() Binds.removeButton(id) end }
+    else items[#items + 1] = { text = "Add On-Screen Button", fn = function() Binds.addButton(id) end } end
+    items[#items + 1] = { text = "Cancel" }
+    bindMenu((r and r.label) or id, items)
+end
+
+-- extras drawn on a toggle's row: the right-click menu and a small tag showing what is bound
+function Binds.decorate(row, c, id, fixedW)
+    row.MouseButton2Click:Connect(function() Binds.menu(id) end)
+    local m = Binds.map[id]
+    if m and (m.key or m.btn) then
+        local tag = (m.key and ("[" .. m.key .. "]") or "") .. ((m.key and m.btn) and " " or "") .. (m.btn and "(button)" or "")
+        New("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(fixedW + 18), 0.5, 0),
+            Size = UDim2.fromOffset(120, 18), Text = tag, Font = T.F.semi, TextSize = 13, TextColor3 = T.dim, TextXAlignment = AR }, row)
+    end
+end
+
+-- ---------------------------------------------------------------- saved inside configs
+Features.binds = {
+    serialize = function()
+        local list = {}
+        for id, m in pairs(Binds.map) do
+            list[#list + 1] = { id = id, label = m.label, key = m.key, x = m.btn and m.btn.x or nil, y = m.btn and m.btn.y or nil }
+        end
+        table.sort(list, function(a, b) return a.id < b.id end)
+        return { list = list }
+    end,
+    apply = function(d)
+        if type(d) ~= "table" or type(d.list) ~= "table" then return end
+        local map = {}
+        for _, e in ipairs(d.list) do
+            if type(e) == "table" and type(e.id) == "string" and e.id ~= "" then
+                local m = { label = tostring(e.label or e.id) }
+                if type(e.key) == "string" and e.key ~= "" and pcall(function() return Enum.KeyCode[e.key] end) then m.key = e.key end
+                if type(e.x) == "number" and type(e.y) == "number" then m.btn = { x = math.clamp(e.x, 0.02, 0.98), y = math.clamp(e.y, 0.02, 0.98) } end
+                if m.key or m.btn then map[e.id] = m end
+            end
+        end
+        Binds.map = map
+        pcall(Binds.rebuild)
+        if UI.visible then pcall(refreshPage) end
+    end,
+}
+
+-- ---------------------------------------------------------------- the Keybinds tab
+local bindPick = { tab = "esp", label = nil }
+
+local function bindToggleList(tabId)
+    local out, seen = {}, {}
+    local tab = bindTab(tabId)
+    if not tab then return out end
+    local ok, secs = pcall(tab.build)
+    if not ok or type(secs) ~= "table" then return out end
+    for _, sec in ipairs(secs) do
+        for _, c in ipairs(sec.controls or {}) do
+            if c.t == "toggle" then
+                local id = Binds.track(tabId, sec, c)
+                local label = Binds.reg[id].label
+                seen[label] = (seen[label] or 0) + 1
+                if seen[label] > 1 then label = label .. " (" .. seen[label] .. ")" end
+                out[#out + 1] = { id = id, label = label }
+            end
+        end
+    end
+    return out
+end
+
+local function buildBindsPage()
+    local secs = {}
+    -- Your binds
+    local ids = {}
+    for id in pairs(Binds.map) do ids[#ids + 1] = id end
+    table.sort(ids, function(a, b) return (Binds.map[a].label or a):lower() < (Binds.map[b].label or b):lower() end)
+    local mine = { { t = "text", text = "Every toggle can have a keybind and an on-screen button. Right-click any toggle in the hub to make one, or use Add A Bind below. They are saved inside configs, so each config can have its own set. Click an on-screen button to flip its toggle, drag it to move it, right-click it for a menu." } }
+    if #ids == 0 then
+        mine[#mine + 1] = { t = "text", text = "No binds yet." }
+    end
+    for _, id in ipairs(ids) do
+        local m = Binds.map[id]
+        mine[#mine + 1] = { t = "keybind", text = m.label or id, get = function() return m.key or "None" end,
+            set = function(name)
+                if name == S.keybind then toast(name .. " is the key that shows and hides the hub. Pick another.", "err"); return end
+                m.key = name; if UI.visible then pcall(refreshPage) end
+            end }
+        mine[#mine + 1] = { t = "buttons", items = {
+            { label = m.btn and "Remove Button" or "Add Button", fn = function() if m.btn then Binds.removeButton(id) else Binds.addButton(id) end end },
+            { label = "Clear Key", fn = function() Binds.clearKey(id) end },
+            { label = "Delete Bind", style = "red", fn = function() Binds.map[id] = nil; Binds.rebuild(); refreshPage() end },
+        } }
+    end
+    secs[#secs + 1] = { title = "Your Binds", controls = mine }
+
+    -- Add a bind without right-clicking (also works on touch)
+    local tabNames, tabIdOf, nameOf = {}, {}, {}
+    for _, t in ipairs(UI.tabs) do
+        if t.id ~= "binds" and t.id ~= "configs" then tabNames[#tabNames + 1] = t.name; tabIdOf[t.name] = t.id; nameOf[t.id] = t.name end
+    end
+    local toggles = bindToggleList(bindPick.tab)
+    local labels, byLabel = {}, {}
+    for _, e in ipairs(toggles) do labels[#labels + 1] = e.label; byLabel[e.label] = e.id end
+    if not (bindPick.label and byLabel[bindPick.label]) then bindPick.label = labels[1] end
+    local function pickedId() return bindPick.label and byLabel[bindPick.label] end
+    secs[#secs + 1] = { title = "Add A Bind", controls = {
+        { t = "text", text = "Pick a tab and one of its toggles, then give it a keybind or an on-screen button." },
+        { t = "dropdown", text = "Tab", get = function() return nameOf[bindPick.tab] or "ESP" end, options = function() return tabNames end,
+            set = function(o) bindPick.tab = tabIdOf[o] or "esp"; bindPick.label = nil; refreshPage() end },
+        { t = "dropdown", text = "Toggle", get = function() return bindPick.label or "(none)" end, options = function() return labels end,
+            set = function(o) bindPick.label = o; refreshPage() end },
+        { t = "buttons", items = {
+            { label = "Set A Keybind", fn = function() local id = pickedId(); if id then Binds.captureKey(id) end end },
+            { label = "Add On-Screen Button", fn = function() local id = pickedId(); if id then Binds.addButton(id) end end },
+        } },
+    } }
+
+    secs[#secs + 1] = { title = "On-Screen Buttons", controls = {
+        { t = "text", text = "Put every on-screen button back in a tidy column, or take them all away. Keybinds are not affected." },
+        { t = "buttons", items = {
+            { label = "Tidy Up Buttons", fn = function()
+                local n = 0
+                local order = {}
+                for id, m in pairs(Binds.map) do if m.btn then order[#order + 1] = id end end
+                table.sort(order)
+                for _, id in ipairs(order) do Binds.map[id].btn = { x = 0.1 + 0.11 * math.floor(n / 8), y = 0.22 + 0.075 * (n % 8) }; n += 1 end
+                Binds.rebuild()
+            end },
+            { label = "Remove All Buttons", style = "red", confirm = true, fn = function()
+                for id, m in pairs(Binds.map) do m.btn = nil end
+                for id in pairs(Binds.map) do bindPrune(id) end
+                Binds.rebuild(); refreshPage()
+            end },
+        } },
+    } }
+    return secs
+end
+Binds.buildPage = buildBindsPage
+
+--#endregion binds
 --#region tabs
 do
 -- every master switch in one entry. Configs saved before this existed have no "switches" entry, so loading one of those leaves your switches alone.
@@ -10473,7 +10991,7 @@ Features.switches = {
         local pc = Fun.Pur.Cfg
         return {
             SpeedModifier = Speed.Enabled, InfiniteStamina = Stam.Infinite, AutoRun = Stam.AutoRun,
-            Noclip = SP.noclipOn(), Fullbright = SP.fullbrightOn(),
+            Noclip = SP.noclipOn(), Fullbright = SP.fullbrightOn(), HideIchorSplats = SP.hideIchorOn(),
             AutoDefault = Auto.Default, AutoCircle = Auto.Circle, AutoTreadmill = Auto.Treadmill, AutoSwimmy = Auto.Swimmy, AutoInstant = Auto.Instant,
             Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled,
         }
@@ -10486,6 +11004,7 @@ Features.switches = {
         if has("AutoRun") then Stam.AutoRun = d.AutoRun end
         if has("Noclip") and SP.noclipOn() ~= d.Noclip then SP.setNoclip(d.Noclip) end
         if has("Fullbright") then SP.setFullbright(d.Fullbright) end
+        if has("HideIchorSplats") then SP.setHideIchor(d.HideIchorSplats) end
         for k, key in pairs({ AutoDefault = "Default", AutoCircle = "Circle", AutoTreadmill = "Treadmill", AutoSwimmy = "Swimmy", AutoInstant = "Instant" }) do
             if has(k) then Auto[key] = d[k] end
         end
@@ -10511,6 +11030,7 @@ local function grouped(build, spec)
                 sec.group = m.g
                 if m.pin then sec.pin = true end
                 if m.t then sec.title = m.t end
+                if m.r then sec.rail = m.r end
             end
         end
         return secs
@@ -10519,9 +11039,12 @@ end
 
 local ESP_GROUPS = {
     ["General"] = { g = "Basics" },
-    ["Toons"] = { g = "Players" }, ["Twisteds"] = { g = "Players" }, ["Sprout Tendrils"] = { g = "Players" },
-    ["Machines"] = { g = "Objects" }, ["Trick or Treat Doors"] = { g = "Objects", t = "Doors" }, ["Bookshelves"] = { g = "Objects" }, ["Star Pillows"] = { g = "Objects" },
-    ["Items"] = { g = "Items" }, ["Item Colors"] = { g = "Items" },
+    ["Toons"] = { g = "Players" },
+    ["Twisteds"] = { g = "Twisteds" },
+    ["Twisted Sprout's Tendrils"] = { g = "Hazards", r = "Sprout's Tendrils" },   -- the full name is 25 characters, too wide for the rail in most skins
+    ["Twisted Blot's Hands"] = { g = "Hazards" }, ["Ichor Puddles"] = { g = "Hazards" },
+    ["Machines"] = { g = "Objects" }, ["Trick or Treat Doors"] = { g = "Objects" }, ["Bookshelves"] = { g = "Objects" },
+    ["Items"] = { g = "Items" }, ["Item Colors"] = { g = "Items" }, ["Star Pillows"] = { g = "Items" },
 }
 local SKILL_GROUPS = {
     ["More Skill Checks"] = { g = "Basics", t = "Main" }, ["Live Values"] = { g = "Basics" },
@@ -10559,6 +11082,7 @@ UI.tabs = {
     { id = "pursuer",    name = "Pursuer",      icon = "fun",        build = grouped(buildPursuerPage, PURSUER_GROUPS) },
     { id = "customizer", name = "Customizer",   icon = "customizer", build = grouped(Cust.build, CUSTOMIZER_GROUPS) },
     { id = "sound",      name = "Sound",        icon = "fun",        build = grouped(UI.snd.build, SOUND_GROUPS) },   -- icon: reusing "fun" until the skins get a speaker icon
+    { id = "binds",      name = "Keybinds",     icon = "automation", build = grouped(Binds.buildPage, {}) },
     { id = "configs",    name = "Configs",      icon = "configs",    build = buildConfigsPage },
     { id = "appearance", name = "Appearance",   icon = "appearance", build = buildAppearancePage },
 }
@@ -11143,6 +11667,7 @@ function buildGui()
     makeOrb()
     applyLayout()
     renderPage()
+    pcall(UI.binds.rebuild)                 -- the on-screen buttons are drawn with the skin, so they are rebuilt with it
     local cont = Content
     task.defer(function() if cont and cont.Parent then cont.CanvasPosition = Vector2.new(0, keepY) end end)
 end
@@ -11177,6 +11702,8 @@ connect(UIS.InputBegan, function(i, gp)
     if gp or i.UserInputType ~= Enum.UserInputType.Keyboard then return end
     if i.KeyCode.Name == S.keybind then
         UI.setVisible(not UI.visible)
+    elseif UI.binds and UI.binds.onKey(i.KeyCode.Name) then
+        -- a toggle was bound to this key; it has been flipped
     elseif S.style == "xmb" and mouseOverWin() and (i.KeyCode == Enum.KeyCode.Left or i.KeyCode == Enum.KeyCode.Right) then
         local idx = 1
         for n, t in ipairs(UI.tabs) do if t.id == UI.current then idx = n end end
@@ -11204,6 +11731,7 @@ function Destroy()
     pcall(Auto.Unload)
     pcall(Cust.Destroy)
     pcall(UI.snd.Destroy)
+    pcall(UI.binds.destroy)
     pcall(function() sndHolder:Destroy() end)
     if gui then pcall(function() gui:Destroy() end) end
     env.TonyScriptPalace = nil
