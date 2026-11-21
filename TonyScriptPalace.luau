@@ -245,6 +245,7 @@ local Cfg = {
     Categories = {
         Players    = { Enabled = true, Fill = true, Self = false, Color = C(0, 255, 0) },
         Twisteds   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },
+        Tendrils   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Sprout's tendrils (SproutTendril)
         Generators = { Enabled = true, Fill = true, HideCompleted = false, Brusha = true, DuoOne = true, Colors = {
             Incomplete = C(255, 0, 0), InProgress = C(255, 255, 0), Completed = C(0, 255, 0), Connie = C(0, 255, 255), Brusha = C(170, 0, 255),
             DuoOne = C(255, 165, 0),      -- duo machine with only one player working on it
@@ -359,6 +360,12 @@ do
             if color and validTarget(inst) then desired[inst] = { color = color, cat = cat } end
         end
         local cats = Cfg.Categories
+        -- Twisted Sprout's tendrils are cloned into the room while the floor runs: into its FreeArea folder, or straight into the room when it has none
+        local function addTendrils(folder)
+            for _, c in ipairs(folder:GetChildren()) do
+                if c.Name == "SproutTendril" then add(c, cats.Tendrils.Color, "Tendrils") end
+            end
+        end
 
         if cats.Players.Enabled then
             local selfOn = cats.Players.Self
@@ -412,7 +419,21 @@ do
         for _, room in ipairs(getRoomModels()) do
             if cats.Twisteds.Enabled then
                 local f = room:FindFirstChild("Monsters")
-                if f then for _, m in ipairs(f:GetChildren()) do add(m, cats.Twisteds.Color, "Twisteds") end end
+                if f then
+                    -- The game's ShellProjector draws some Twisteds (Flutter, which flies) from a client-side copy named "<Name>_Shell"
+                    -- parented to the camera, and makes the real model in Monsters invisible (LocalTransparencyModifier = 1).
+                    -- A Highlight on an invisible model shows nothing, so when a shell exists that is what gets highlighted.
+                    local cam = Workspace.CurrentCamera
+                    for _, m in ipairs(f:GetChildren()) do
+                        local shell = cam and cam:FindFirstChild(m.Name .. "_Shell")
+                        add((shell and shell:IsA("Model")) and shell or m, cats.Twisteds.Color, "Twisteds")
+                    end
+                end
+            end
+            if cats.Tendrils.Enabled then
+                local fa = room:FindFirstChild("FreeArea")
+                if fa then addTendrils(fa) end
+                addTendrils(room)
             end
             if cats.Generators.Enabled then
                 local f = room:FindFirstChild("Generators")
@@ -619,7 +640,7 @@ do
             if type(data) ~= "table" then return end
             local wasOn = Speed.Enabled
             applyInto(Speed, data)
-            Speed.Enabled = wasOn            -- loading a config never switches the speed modifier on by itself
+            Speed.Enabled = wasOn            -- the speed modifier switch is saved by the "switches" entry, so configs from before that was added leave it alone
             if Speed.Mode ~= "Additive" and Speed.Mode ~= "Multiplicative" then Speed.Mode = "Additive" end
             if not STEP_SIZES[Speed.Step] then Speed.Step = "Units" end
             Speed.Floor = math.clamp(tonumber(Speed.Floor) or 0, 0, 100)
@@ -628,7 +649,7 @@ do
         end,
     }
     Features.stamina = {
-        serialize = function() return { ShowActual = Stam.ShowActual, Icon = Stam.Icon, RunStop = Stam.RunStop, RunResume = Stam.RunResume, StopMode = Stam.StopMode, ResumeMode = Stam.ResumeMode, StopFrac = Stam.StopFrac, ResumeFrac = Stam.ResumeFrac, Peak = Stam.Peak } end,   -- Infinite Stamina and Auto Run always start off
+        serialize = function() return { ShowActual = Stam.ShowActual, Icon = Stam.Icon, RunStop = Stam.RunStop, RunResume = Stam.RunResume, StopMode = Stam.StopMode, ResumeMode = Stam.ResumeMode, StopFrac = Stam.StopFrac, ResumeFrac = Stam.ResumeFrac, Peak = Stam.Peak } end,   -- the Infinite Stamina and Auto Run switches are saved by the "switches" entry
         apply = function(data)
             if type(data) ~= "table" then return end
             if type(data.ShowActual) == "boolean" then Stam.ShowActual = data.ShowActual end
@@ -2853,7 +2874,7 @@ end
 function P.set(k, v) Cfg[k] = v; P.sanitize() end
 
 Features.pursuer = {
-    serialize = function() local o = {}; for k, v in pairs(Cfg) do if k ~= "Enabled" then o[k] = v end end; return o end,   -- like the other features it always starts off
+    serialize = function() local o = {}; for k, v in pairs(Cfg) do if k ~= "Enabled" then o[k] = v end end; return o end,   -- no Enabled here: saved Pursuer looks reuse this, and loading a look must not arm it (configs save that switch in "switches")
     apply = function(data)
         if type(data) ~= "table" then return end
         if data.PanicBoost == true and data.PanicMode == nil then data = setmetatable({ PanicMode = "Increase By Percent" }, { __index = data }) end   -- saved before the panic options existed
@@ -5269,7 +5290,7 @@ local function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) 
 
 local function resetESPColors()
     local c, d = Cfg.Categories, DEF.Categories
-    for _, k in ipairs({ "Players", "Twisteds", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
+    for _, k in ipairs({ "Players", "Twisteds", "Tendrils", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
     c.StarPillows.OtherColor = d.StarPillows.OtherColor
     c.StarPillows.TwistedColor = d.StarPillows.TwistedColor
     c.Generators.Colors = deepcopy(d.Generators.Colors)
@@ -5305,6 +5326,7 @@ local function buildESPPage()
     } }
     secs[#secs + 1] = { title = "Toons", controls = { tg("Enabled", cats.Players, "Enabled"), tg("Fill", cats.Players, "Fill"), tg("Highlight Myself", cats.Players, "Self"), cl("Color", cats.Players, "Color", DEF.Categories.Players) } }
     secs[#secs + 1] = { title = "Twisteds", controls = { tg("Enabled", cats.Twisteds, "Enabled"), tg("Fill", cats.Twisteds, "Fill"), cl("Color", cats.Twisteds, "Color", DEF.Categories.Twisteds) } }
+    secs[#secs + 1] = { title = "Sprout Tendrils", controls = { tg("Enabled", cats.Tendrils, "Enabled"), tg("Fill", cats.Tendrils, "Fill"), cl("Color", cats.Tendrils, "Color", DEF.Categories.Tendrils) } }
     secs[#secs + 1] = { title = "Machines", controls = {
         tg("Enabled", cats.Generators, "Enabled"), tg("Fill", cats.Generators, "Fill"),
         tg("Hide Completed Machines", cats.Generators, "HideCompleted"),
@@ -5503,7 +5525,7 @@ local function buildConfigsPage()
             empty = "No configs yet. Type a name above and press Save.",
             onSelect = function(n) cfgState.name = n; refreshPage() end },
         { t = "buttons", items = { { label = "Refresh List", fn = function() refreshPage(); toast("Config list refreshed.", "info") end } } },
-        { t = "text", text = "Configs live in workspace/" .. CFG_DIR .. ". They keep your ESP and Movement settings. The speed modifier, Infinite Stamina, Auto Run and Noclip always start off, so nothing surprises you when you load one."},
+        { t = "text", text = "Configs live in workspace/" .. CFG_DIR .. ". They keep all of your settings and every on/off switch: ESP, Movement, World, Automation, Pursuer, Fun, Sound and the Customizer's options, so loading one can switch things on straight away. Sound setups, Customizer configs and saved Pursuers are their own libraries: a config remembers which one you were using. Look and feel (the Appearance tab) is saved on its own and is not part of a config."},
     } }
     return secs
 end
@@ -5764,17 +5786,18 @@ local function buildAutomationPage()
 end
 
 Features.world = {
-    serialize = function() return { Walls = SP.noclipWalls(), Names = worldNames } end,        -- Noclip itself always starts off
+    serialize = function() return { Walls = SP.noclipWalls(), Names = worldNames, FullbrightLevel = SP.fullbrightLevel() } end,        -- the Noclip and Fullbright switches are saved by the "switches" entry
     apply = function(data)
         if type(data) ~= "table" then return end
         if type(data.Walls) == "boolean" then SP.setNoclipWalls(data.Walls) end
         if type(data.Names) == "string" then worldNames = data.Names; SP.setNoclipNames(worldNames) end
+        if type(data.FullbrightLevel) == "number" then SP.setFullbrightLevel(data.FullbrightLevel) end
     end,
 }
 
 Features.automation = {
     serialize = function() return { Snap = Auto.Snap, TapRate = Auto.TapRate, InstantDelay = Auto.InstantDelay, Feedback = Auto.Feedback, SwimmyHide = Auto.SwimmyHide, SwimmyCoins = Auto.SwimmyCoins, SwimmyHideCoins = Auto.SwimmyHideCoins, SwimmyInstantCoins = Auto.SwimmyInstantCoins, SwimmyCoinEvery = Auto.SwimmyCoinEvery, SwimmyRapid = Auto.SwimmyRapid, SwimmyRapidRate = Auto.SwimmyRapidRate } end,
-    apply = function(data)               -- like the speed modifier, loading a config never switches features on
+    apply = function(data)               -- the auto skill check switches are saved by the "switches" entry
         if type(data) ~= "table" then return end
         if type(data.Snap) == "boolean" then Auto.Snap = data.Snap end
         for _, k in ipairs({ "Feedback", "SwimmyHide", "SwimmyHideCoins", "SwimmyCoins", "SwimmyInstantCoins", "SwimmyCoinEvery", "SwimmyRapid" }) do
@@ -6267,7 +6290,7 @@ Features.fun = {
         local out = {}
         for k, v in pairs(Fun) do
             if type(v) == "number" or type(v) == "string" or type(v) == "boolean" then
-                if k ~= "Enabled" and k ~= "Status" and k ~= "dazedUntil" and k ~= "dazedSet" and k ~= "dazedPrev" then out[k] = v end   -- like the other features, it always starts off
+                if k ~= "Enabled" and k ~= "Status" and k ~= "dazedUntil" and k ~= "dazedSet" and k ~= "dazedPrev" then out[k] = v end   -- the More Skill Checks switch is saved by the "switches" entry
             end
         end
         return out
@@ -8342,8 +8365,23 @@ end
 refreshPages = function() tspRefresh() end
 
 local API = { build = buildPage, working = W }
-function API.serialize() return { config = (W.cfg.name ~= "" and W.cfg.name) or nil } end
+function API.serialize()
+    return { config = (W.cfg.name ~= "" and W.cfg.name) or nil,
+        settings = { autoApply = S.autoApply, autoConfig = S.autoConfig, keepWorking = S.keepWorking, localAnims = S.localAnims, captureOthers = S.captureOthers,
+            sources = { Lobby = S.sources.Lobby, Game = S.sources.Game, Roleplay = S.sources.Roleplay } } }
+end
 function API.apply(d)
+    if type(d) == "table" and type(d.settings) == "table" then
+        local t = d.settings
+        for _, k in ipairs({ "autoApply", "keepWorking", "localAnims", "captureOthers" }) do
+            if type(t[k]) == "boolean" then S[k] = t[k] end
+        end
+        if type(t.autoConfig) == "string" then S.autoConfig = t.autoConfig end
+        if type(t.sources) == "table" then
+            for _, k in ipairs({ "Lobby", "Game", "Roleplay" }) do if type(t.sources[k]) == "boolean" then S.sources[k] = t.sources[k] end end
+        end
+        pcall(saveSettings)
+    end
     if type(d) == "table" and type(d.config) == "string" and isF(CFG_DIR .. "/" .. d.config .. ".json") then
         if loadCfgFile(d.config, true) then reapply() end
     end
@@ -9858,12 +9896,21 @@ local Snd = { K = {} }
 
     -- config-system hooks (Configs tab): a config remembers the on/off switches and which setup to use
     function Snd.serialize()
-        return { enabled = st.enabled, gameOn = st.gameOn, sfxOn = st.sfxOn, emitOn = st.emitOn, muteGame = st.muteGame, setup = st.lastSetup }
+        return { enabled = st.enabled, gameOn = st.gameOn, sfxOn = st.sfxOn, emitOn = st.emitOn, muteGame = st.muteGame, setup = st.lastSetup,
+            muteOnlyMine = st.muteOnlyMine, muteKeywords = st.muteKeywords, audio = audioBlock(), mixer = st.mixer }
     end
     function Snd.apply(d)
         if type(d) ~= "table" then return end
         for _, k in ipairs({ "enabled", "gameOn", "sfxOn", "emitOn", "muteGame" }) do if d[k] ~= nil then st[k] = d[k] and true or false end end
         if type(d.setup) == "string" and d.setup ~= "" and d.setup ~= st.lastSetup and isF(SETUP_DIR .. "/" .. d.setup .. ".json") then Snd.loadSetup(d.setup) end
+        -- the config's own volume, pitch, fades and mixer go on top of whatever the setup just set
+        applyAudio(d.audio)
+        if type(d.muteOnlyMine) == "boolean" then st.muteOnlyMine = d.muteOnlyMine end
+        if type(d.muteKeywords) == "string" then st.muteKeywords = d.muteKeywords end
+        if type(d.mixer) == "table" then
+            for k in pairs(st.mixer) do Snd.setMixer(k, 1) end
+            for k, v in pairs(d.mixer) do if tonumber(v) then Snd.setMixer(k, math.clamp(tonumber(v), 0, 3)) end end
+        end
         Snd.changed()
     end
 
@@ -10420,6 +10467,37 @@ end)()
 --#endregion page-sound
 --#region tabs
 do
+-- every master switch in one entry. Configs saved before this existed have no "switches" entry, so loading one of those leaves your switches alone.
+Features.switches = {
+    serialize = function()
+        local pc = Fun.Pur.Cfg
+        return {
+            SpeedModifier = Speed.Enabled, InfiniteStamina = Stam.Infinite, AutoRun = Stam.AutoRun,
+            Noclip = SP.noclipOn(), Fullbright = SP.fullbrightOn(),
+            AutoDefault = Auto.Default, AutoCircle = Auto.Circle, AutoTreadmill = Auto.Treadmill, AutoSwimmy = Auto.Swimmy, AutoInstant = Auto.Instant,
+            Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled,
+        }
+    end,
+    apply = function(d)
+        if type(d) ~= "table" then return end
+        local function has(k) return type(d[k]) == "boolean" end
+        if has("SpeedModifier") then Speed.Enabled = d.SpeedModifier end
+        if has("InfiniteStamina") then Stam.Infinite = d.InfiniteStamina end
+        if has("AutoRun") then Stam.AutoRun = d.AutoRun end
+        if has("Noclip") and SP.noclipOn() ~= d.Noclip then SP.setNoclip(d.Noclip) end
+        if has("Fullbright") then SP.setFullbright(d.Fullbright) end
+        for k, key in pairs({ AutoDefault = "Default", AutoCircle = "Circle", AutoTreadmill = "Treadmill", AutoSwimmy = "Swimmy", AutoInstant = "Instant" }) do
+            if has(k) then Auto[key] = d[k] end
+        end
+        if has("Pursuer") then
+            local pc = Fun.Pur.Cfg
+            local was = pc.Enabled
+            pc.Enabled = d.Pursuer
+            if was and not d.Pursuer then pcall(Fun.Pur.despawn, true) end
+        end
+        if has("MoreSkillChecks") then Fun.Enabled = d.MoreSkillChecks; Fun.Status = d.MoreSkillChecks and "On" or "Off" end
+    end,
+}
 Features.customizer = { serialize = function() return Cust.serialize() end, apply = function(d) Cust.apply(d) end }
 Features.sound = { serialize = function() return UI.snd.serialize() end, apply = function(d) UI.snd.apply(d) end }
 
@@ -10441,7 +10519,7 @@ end
 
 local ESP_GROUPS = {
     ["General"] = { g = "Basics" },
-    ["Toons"] = { g = "Players" }, ["Twisteds"] = { g = "Players" },
+    ["Toons"] = { g = "Players" }, ["Twisteds"] = { g = "Players" }, ["Sprout Tendrils"] = { g = "Players" },
     ["Machines"] = { g = "Objects" }, ["Trick or Treat Doors"] = { g = "Objects", t = "Doors" }, ["Bookshelves"] = { g = "Objects" }, ["Star Pillows"] = { g = "Objects" },
     ["Items"] = { g = "Items" }, ["Item Colors"] = { g = "Items" },
 }
