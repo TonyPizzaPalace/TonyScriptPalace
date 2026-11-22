@@ -1466,7 +1466,8 @@ do
     -- NOCLIP (World tab). Turns off collision on the map, not on you:
     --   * everything named NoClip, NoClip_Collider, InvisBlock, InvisWall or CylinderCollider (and anything with a name you add),
     --   * every part inside a "Walls" folder/model EXCEPT floors, so walls, columns and window frames stop blocking
-    --     you but you do not fall through the ground.
+    --     you but you do not fall through the ground,
+    --   * inside Labs' LabsFakeElevator only: DoorHitbox, DoorVisible and the whole ElevatorDoor model.
     -- Original values are remembered and restored, new parts (new rooms) are caught as they appear, and the game
     -- turning collision back on is undone.
     ------------------------------------------------------------------
@@ -1502,15 +1503,32 @@ do
             end)
         end
     end
+    -- Labs' decorative elevator (LabsFakeElevator): its DoorHitbox, its DoorVisible and everything in its ElevatorDoor model.
+    -- These names are only matched INSIDE it, because the real elevator (Workspace.Elevators.Elevator) has a DoorHitbox and a
+    -- DoorVisible too and keeps its collision.
+    local NC_FAKE_ELEVATOR = "LabsFakeElevator"
+    local NC_FAKE_PARTS = { DoorHitbox = true, DoorVisible = true }
+    local function ncFakeElevator(box)
+        local function consider(d)
+            if NC_FAKE_PARTS[d.Name] and d:IsA("BasePart") then ncTrack(d)
+            elseif d.Name == "ElevatorDoor" and (d:IsA("Model") or d:IsA("Folder")) then ncBox(d, "all") end
+        end
+        for _, d in ipairs(box:GetDescendants()) do pcall(consider, d) end
+        if not nc.boxCons[box] then               -- parts that stream in later; cleaned up by ncStop with the other box connections
+            nc.boxCons[box] = box.DescendantAdded:Connect(function(d) pcall(consider, d) end)
+        end
+    end
     local function ncMatch(inst)
         if ncWanted(inst.Name) then
             if inst:IsA("BasePart") then ncTrack(inst)
             elseif inst:IsA("Model") or inst:IsA("Folder") then ncBox(inst, "all") end
+        elseif inst.Name == NC_FAKE_ELEVATOR and (inst:IsA("Model") or inst:IsA("Folder")) then
+            ncFakeElevator(inst)
         elseif nc.walls and inst.Name == "Walls" and (inst:IsA("Model") or inst:IsA("Folder")) then
             ncBox(inst, "walls")
         end
     end
-    local function ncInteresting(name) return ncWanted(name) or (nc.walls and name == "Walls") end
+    local function ncInteresting(name) return ncWanted(name) or name == NC_FAKE_ELEVATOR or (nc.walls and name == "Walls") end
     local function ncScan(gen)                -- one pass over what already exists, in slices so it never hitches
         local n = 0
         for _, d in ipairs(Workspace:GetDescendants()) do
@@ -5067,7 +5085,7 @@ UI.hints = {
     ["Circle Machines"] = "Handles the circle skill check for you.",
     ["Treadmill Machines"] = "Taps through treadmill checks so you don't have to.",
     ["Swimmy Barnaby Machines"] = "Barnaby flies dead level and the seaweed never lands a hit.",
-    ["Snap To Gold"] = "Nudges the marker onto the exact middle of gold before it taps.",
+    ["Snap To Green/Yellow"] = "Nudges the marker or ring onto the exact middle of the green or yellow zone before it taps.",
     ["Treadmill Taps Per Second"] = "How fast it taps on treadmill checks.",
     ["Hide Seaweed"] = "Hides obstacles before the game shows them, so Barnaby has nothing to hit.",
     ["Pull Coins Into Barnaby"] = "Drags each coin to Barnaby as it approaches.",
@@ -5762,10 +5780,21 @@ end
 --#endregion page-appearance
 --#region page-world
 local worldNames = ""     -- what is typed in the World tab's "Extra Names" box
+-- game GUI tweaks (things drawn on your screen, rather than things in the map)
+local function buildScreenPage()
+    return {
+        { title = "Ichor Splats", controls = {
+            { t = "text", text = "Stepping in an Ichor puddle splats ink across your whole screen. This hides those splats. Turn it off and they come back."},
+            { t = "toggle", text = "Hide Ichor Splats", get = function() return SP.hideIchorOn() end,
+                set = function(v) SP.setHideIchor(v); toast(v and "Ichor splats hidden." or "Ichor splats back.", "info") end },
+        } },
+    }
+end
+
 local function buildWorldPage()
     return {
         { title = "Noclip", controls = {
-            { t = "text", text = "Noclip changes the map, not you. It turns off collision for everything named NoClip, NoClip_Collider, InvisBlock, InvisWall and CylinderCollider, and optionally for the parts inside every Walls folder, so walls, columns and window frames stop being a problem. Floors stay solid so you don't fall into the void. New rooms are handled automatically, everything goes back to normal when you turn it off, and it starts off every time."},
+            { t = "text", text = "Noclip changes the map, not you. It turns off collision for everything named NoClip, NoClip_Collider, InvisBlock, InvisWall and CylinderCollider, and also for the DoorHitbox, the DoorVisible and the whole ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone), and optionally for the parts inside every Walls folder, so walls, columns and window frames stop being a problem. Floors stay solid so you don't fall into the void. New rooms are handled automatically, everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
             { t = "toggle", text = "Noclip", get = function() return SP.noclipOn() end,
                 set = function(v) SP.setNoclip(v); toast(v and "Noclip on." or "Noclip off, collisions restored.", "info") end },
             { t = "toggle", text = "Include Walls Folders (Keeps Floors)", get = function() return SP.noclipWalls() end,
@@ -5781,11 +5810,6 @@ local function buildWorldPage()
                 set = function(v) SP.setFullbright(v); toast(v and "Fullbright on." or "Fullbright off.", "info") end },
             { t = "slider", text = "Fullbright Brightness", min = 0, max = 100, dec = 0, step = 1,
                 get = function() return SP.fullbrightLevel() end, set = function(v) SP.setFullbrightLevel(v) end },
-        } },
-        { title = "Ichor Splats", controls = {
-            { t = "text", text = "Stepping in an Ichor puddle splats ink across your whole screen. This hides those splats. Turn it off and they come back."},
-            { t = "toggle", text = "Hide Ichor Splats", get = function() return SP.hideIchorOn() end,
-                set = function(v) SP.setHideIchor(v); toast(v and "Ichor splats hidden." or "Ichor splats back.", "info") end },
         } },
         { title = "Game Info", controls = {
             { t = "text", text = "Live info from the Dandy's World API Library. It only has anything to say inside a run."},
@@ -5854,13 +5878,13 @@ local function buildAutomationPage()
     end
     return {
         { title = "Auto Skill Checks", controls = {
-            { t = "text", text = "Each toggle taps the skill check for you at the right moment. Gold is found from the live on-screen zones, so tiny skill check sizes are no problem. Turn them on before you start a machine."},
+            { t = "text", text = "Each toggle taps the skill check for you at the right moment. The green or yellow zone is found from the live on-screen zones, so tiny skill check sizes are no problem. Turn them on before you start a machine."},
             tog("Default Machines", "Default"),
             tog("Circle Machines", "Circle"),
             tog("Treadmill Machines", "Treadmill"),
             tog("Swimmy Barnaby Machines", "Swimmy"),
-            { t = "toggle", text = "Snap To Gold", get = function() return Auto.Snap end, set = function(v) Auto.Snap = v end },
-            { t = "text", text = "Snap To Gold nudges the marker or ring onto the exact middle of the gold zone right before tapping. Turn it off to only hit when the marker really lands there (it can miss tiny zones at low FPS, so your call)."},
+            { t = "toggle", text = "Snap To Green/Yellow", get = function() return Auto.Snap end, set = function(v) Auto.Snap = v end },
+            { t = "text", text = "Snap To Green/Yellow nudges the marker (the green calibration area on default machines) or the ring (the yellow zone on circle machines) onto the exact middle of that zone right before tapping. Turn it off to only hit when the marker really lands there (it can miss tiny zones at low FPS, so your call)."},
             { t = "slider", text = "Treadmill Taps Per Second", min = 0, max = 20, dec = 0, step = 1,
                 get = function() return Auto.TapRate end, set = function(v) Auto.TapRate = v end },
         } },
@@ -10748,7 +10772,8 @@ local function bindMakeButton(g, id, m)
         if isPress(i) then
             moved = false
             local start = Vector2.new(i.Position.X, i.Position.Y)
-            local origin = b.AbsolutePosition + b.AbsoluteSize / 2
+            local vs0 = g.AbsoluteSize           -- (not b.AbsolutePosition: on an IgnoreGuiInset gui it reads one top-bar inset too high, which made the button jump up)
+            local origin = Vector2.new(m.btn.x * vs0.X, m.btn.y * vs0.Y)
             activeDrag = function(pos)
                 local d = Vector2.new(pos.X, pos.Y) - start
                 if not moved and d.Magnitude < 6 then return end
@@ -11042,7 +11067,7 @@ local ESP_GROUPS = {
     ["Toons"] = { g = "Players" },
     ["Twisteds"] = { g = "Twisteds" },
     ["Twisted Sprout's Tendrils"] = { g = "Hazards", r = "Sprout's Tendrils" },   -- the full name is 25 characters, too wide for the rail in most skins
-    ["Twisted Blot's Hands"] = { g = "Hazards" }, ["Ichor Puddles"] = { g = "Hazards" },
+    ["Twisted Blot's Hands"] = { g = "Hazards", r = "Blot's Hands" }, ["Ichor Puddles"] = { g = "Hazards" },
     ["Machines"] = { g = "Objects" }, ["Trick or Treat Doors"] = { g = "Objects" }, ["Bookshelves"] = { g = "Objects" },
     ["Items"] = { g = "Items" }, ["Item Colors"] = { g = "Items" }, ["Star Pillows"] = { g = "Items" },
 }
@@ -11077,6 +11102,7 @@ UI.tabs = {
     { id = "esp",        name = "ESP",          icon = "esp",        build = grouped(buildESPPage, ESP_GROUPS) },
     { id = "movement",   name = "Movement",     icon = "movement",   build = buildMovementPage },
     { id = "world",      name = "World",        icon = "world",      build = buildWorldPage },
+    { id = "screen",     name = "Screen",       icon = "esp",        build = buildScreenPage },
     { id = "automation", name = "Automation",   icon = "automation", build = buildAutomationPage },
     { id = "fun",        name = "Skill Checks", icon = "fun",        build = grouped(buildFunPage, SKILL_GROUPS) },
     { id = "pursuer",    name = "Pursuer",      icon = "fun",        build = grouped(buildPursuerPage, PURSUER_GROUPS) },
