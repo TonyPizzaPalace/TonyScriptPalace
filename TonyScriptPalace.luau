@@ -72,6 +72,9 @@ mkD(ROOT_DIR); mkD(CFG_DIR)
 local C = Color3.fromRGB
 local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
 local RAINBOW = "Rainbow"
+-- animated "colors": Rainbow cycles every hue, Halloween swaps orange and purple, Christmas swaps red and green
+local COLOR_MODES = { Rainbow = true, Halloween = true, Christmas = true }
+local MODE_PAIRS = { Halloween = { Color3.fromRGB(255, 140, 0), Color3.fromRGB(160, 32, 240) }, Christmas = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 200, 0) } }
 
 local function hexOf(c)
     return string.format("#%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
@@ -220,23 +223,25 @@ end
 ----------------------------------------------------------------------
 local ESP = {}
 local espDirty = true
-local rainbowColor = C(255, 0, 0)
-local rainbowSet = {}                                   -- [Highlight] = true
-local rainbowSw = setmetatable({}, { __mode = "k" })    -- [swatch Frame] = true
+local animColors = { Rainbow = C(255, 0, 0), Halloween = MODE_PAIRS.Halloween[1], Christmas = MODE_PAIRS.Christmas[1] }   -- what each animated mode looks like right now
+local rainbowSet = {}                                   -- [Highlight] = mode name
+local rainbowSw = setmetatable({}, { __mode = "k" })    -- [swatch Frame] = mode name
 
 local ITEM_GROUPS = {
-    { C(255, 140, 0),   { "Pumpkin", "Stopwatch", "SkillCheckCandy" } },
-    { C(255, 255, 255), { "Tape", "Tapes", "ResearchCapsule" } },
+    { C(255, 140, 0),   { "Stopwatch", "SkillCheckCandy" } },
+    { "Halloween",      { "Pumpkin", "DandyCorn" } },                 -- orange and purple
+    { "Christmas",      { "ChristmasCookie", "Ornament" } },          -- red and green
+    { C(255, 255, 255), { "Tape", "ResearchCapsule" } },
     { C(255, 105, 180), { "Gumball", "Jawbreaker" } },        -- the game calls them "Gumball" internally (shown as "Gumballs")
     { C(170, 255, 0),   { "Chocolate", "ChocolateBox" } },
     { C(0, 255, 0),     { "StaminaCandy", "Pop", "ProteinBar", "PopBottle" } },
-    { C(160, 32, 240),  { "Instructions", "ExtractionSpeedCandy", "JumperCable", "Valve" } },
-    { C(255, 0, 0),     { "AirHorn", "GigiHoard" } },
+    { C(160, 32, 240),  { "Instructions", "ExtractionSpeedCandy", "JumperCable", "Valve", "GlitterGlue" } },
+    { C(255, 0, 0),     { "AirHorn", "AlarmClock" } },
     { C(150, 90, 40),   { "BonBon" } },
-    { C(255, 255, 0),   { "ChristmasCookie", "DandyCorn", "DandyEasterEggs", "SpeedCandy" } },
-    { RAINBOW,          { "Bandage", "HealthKit" } },
+    { C(255, 255, 0),   { "DandyEasterEggs", "SpeedCandy", "BallOfWax" } },
+    { RAINBOW,          { "Bandage", "HealthKit", "ExtraHeart" } },
     { C(0, 200, 120),   { "EjectButton" } },
-    { C(0, 120, 255),   { "StealthCandy", "SmokeBomb" } },
+    { C(0, 120, 255),   { "StealthCandy", "SmokeBomb", "Cobweb" } },
 }
 
 local Cfg = {
@@ -246,6 +251,8 @@ local Cfg = {
         Players    = { Enabled = true, Fill = true, Self = false, Color = C(0, 255, 0) },
         Twisteds   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },
         Tendrils   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Sprout's tendrils (SproutTendril)
+        GigiStash  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Gigi's Stash (the GigiHoard model in the room's Items folder)
+        Elevator   = { Enabled = true, Fill = true, Color = C(0, 255, 0), Fake = true, FakeColor = C(255, 0, 0) },   -- the real elevator's ElevatorDoor, and optionally the fake elevators' doors
         BlotHands  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Blot's hands (the Arm in each BlotHand_R / BlotHand_L)
         IchorPuddles = { Enabled = true, Fill = true, Color = C(255, 0, 0) },   -- everything in the room's Puddles folder except Twisted Barnaby
         Generators = { Enabled = true, Fill = true, HideCompleted = false, Brusha = true, DuoOne = true, Colors = {
@@ -256,7 +263,7 @@ local Cfg = {
         StarPillows = { Enabled = true, Fill = true, Mode = "All", Color = C(0, 0, 255), OtherDiff = false, OtherColor = C(239, 0, 244),
             ShowTwisted = true, TwistedColor = C(255, 0, 0) },
         Bookshelves = { Enabled = false, Fill = true, Color = C(160, 32, 240), Patterns = { "bookshel", "bookcase" } },
-        Items      = { Enabled = true, Fill = true, PerItem = true, Color = C(255, 255, 255), Fallback = C(200, 200, 200), Colors = {}, Hidden = {} },
+        Items      = { Enabled = true, Fill = true, PerItem = true, Color = C(255, 255, 255), Fallback = C(255, 255, 255), Colors = {}, Hidden = {} },
     },
 }
 local KNOWN_ITEMS = {}
@@ -294,6 +301,20 @@ do
         return part and part.Position or Vector3.zero
     end
     local function validTarget(inst) return inst:IsA("Model") or inst:IsA("BasePart") end
+
+    -- fake elevators can sit anywhere in a room, so they are looked for once every few seconds (and only while that option is on)
+    local fakeCache = { room = nil, list = {}, last = 0 }
+    local function getFakeElevators(room)
+        local now = os.clock()
+        if fakeCache.room == room and now - fakeCache.last < 4 then return fakeCache.list end
+        fakeCache.room, fakeCache.last, fakeCache.list = room, now, {}
+        for _, d in ipairs(room:GetDescendants()) do
+            if (d.Name == "FakeElevator" or d.Name == "LabsFakeElevator") and (d:IsA("Model") or d:IsA("Folder")) then
+                fakeCache.list[#fakeCache.list + 1] = d
+            end
+        end
+        return fakeCache.list
+    end
 
     local bookCache = { room = nil, list = {}, last = 0 }
     local function getBookshelves(room)
@@ -383,6 +404,13 @@ do
             if selfOn and LP.Character and LP.Character:IsDescendantOf(Workspace) then
                 add(LP.Character, cats.Players.Color, "Players")
             end
+        end
+
+        if cats.Elevator.Enabled then          -- the real elevator is not inside a room: Workspace.Elevators.Elevator.ElevatorDoor
+            local els = Workspace:FindFirstChild("Elevators")
+            local el = els and els:FindFirstChild("Elevator")
+            local door = el and el:FindFirstChild("ElevatorDoor")
+            if door then add(door, cats.Elevator.Color, "Elevator") end
         end
 
         if cats.StarPillows.Enabled then
@@ -481,12 +509,27 @@ do
             if cats.Bookshelves.Enabled then
                 for _, b in ipairs(getBookshelves(room)) do add(b, cats.Bookshelves.Color, "Bookshelves") end
             end
+            if cats.GigiStash.Enabled then
+                local f = room:FindFirstChild("Items")
+                if f then
+                    for _, i in ipairs(f:GetChildren()) do
+                        if i.Name == "GigiHoard" then add(i, cats.GigiStash.Color, "GigiStash") end
+                    end
+                end
+            end
+            if cats.Elevator.Enabled and cats.Elevator.Fake then
+                -- the fake elevators: the Door inside a FakeElevator, and the ElevatorDoor inside Labs' LabsFakeElevator
+                for _, e in ipairs(getFakeElevators(room)) do
+                    local d = e:FindFirstChild(e.Name == "LabsFakeElevator" and "ElevatorDoor" or "Door")
+                    if d then add(d, cats.Elevator.FakeColor, "Elevator") end
+                end
+            end
             if cats.Items.Enabled then
                 local f = room:FindFirstChild("Items")
                 if f then
                     local it = cats.Items
                     for _, i in ipairs(f:GetChildren()) do
-                        if not it.Hidden[i.Name] then
+                        if not it.Hidden[i.Name] and i.Name ~= "GigiHoard" then      -- the stash has its own ESP
                             local col
                             if it.PerItem then col = it.Colors[i.Name] or it.Fallback else col = it.Color end
                             add(i, col, "Items")
@@ -504,8 +547,8 @@ do
         hl.FillTransparency = fillOn and ((catCfg and catCfg.FillTransparency) or Cfg.FillTransparency) or 1
         hl.OutlineTransparency = (catCfg and catCfg.OutlineTransparency) or Cfg.OutlineTransparency
         hl.DepthMode = Cfg.AlwaysOnTop and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
-        if entry.color == RAINBOW then
-            rainbowSet[hl] = true
+        if COLOR_MODES[entry.color] then
+            rainbowSet[hl] = entry.color
         else
             rainbowSet[hl] = nil
             hl.FillColor = entry.color
@@ -558,9 +601,12 @@ do
     local acc = 0
     connect(RunService.Heartbeat, function(dt)
         if not alive then return end
-        rainbowColor = Color3.fromHSV((os.clock() * 0.5) % 1, 1, 1)
-        for hl in pairs(rainbowSet) do hl.FillColor = rainbowColor; hl.OutlineColor = rainbowColor end
-        for sw in pairs(rainbowSw) do sw.BackgroundColor3 = rainbowColor end
+        local clk = os.clock()
+        local k = math.clamp(math.sin(clk * math.pi) * 1.5 + 0.5, 0, 1)   -- mostly one color, then a quick fade to the other (a straight blend of red and green would go muddy)
+        animColors.Rainbow = Color3.fromHSV((clk * 0.5) % 1, 1, 1)
+        for name, pair in pairs(MODE_PAIRS) do animColors[name] = pair[1]:Lerp(pair[2], k) end
+        for hl, m in pairs(rainbowSet) do local col = animColors[m]; if col then hl.FillColor = col; hl.OutlineColor = col end end
+        for sw, m in pairs(rainbowSw) do local col = animColors[m]; if col then sw.BackgroundColor3 = col end end
         acc += dt
         if espDirty or acc >= Cfg.UpdateRate then
             acc, espDirty = 0, false
@@ -631,8 +677,8 @@ do
             if type(v) == "string" then
                 local col = (v:sub(1, 1) == "#") and colorOf(v)
                 if col then dst[k] = col
-                elseif v == RAINBOW then dst[k] = RAINBOW
-                elseif type(dst[k]) == "string" then dst[k] = v end
+                elseif COLOR_MODES[v] then dst[k] = v
+                elseif type(dst[k]) == "string" and not COLOR_MODES[dst[k]] then dst[k] = v end   -- (a slot holding a color mode only takes a hex color or another mode)
             elseif type(v) == "table" then
                 if type(dst[k]) ~= "table" then dst[k] = {} end
                 applyInto(dst[k], v)
@@ -1464,14 +1510,15 @@ do
     end)
     ------------------------------------------------------------------
     -- NOCLIP (World tab). Turns off collision on the map, not on you:
-    --   * everything named NoClip, NoClip_Collider, InvisBlock, InvisWall or CylinderCollider (and anything with a name you add),
+    --   * everything named NoClip, NoClip_Collider, InvisBlock, InvisWall, CylinderCollider, WallCollider or VisualGuard (and anything with a name you add),
     --   * every part inside a "Walls" folder/model EXCEPT floors, so walls, columns and window frames stop blocking
     --     you but you do not fall through the ground,
     --   * inside Labs' LabsFakeElevator only: DoorHitbox, DoorVisible and the whole ElevatorDoor model.
+    -- Whatever the rule, nothing inside a folder or model named Stairs is ever touched.
     -- Original values are remembered and restored, new parts (new rooms) are caught as they appear, and the game
     -- turning collision back on is undone.
     ------------------------------------------------------------------
-    local NC_NAMES = { NoClip = true, NoClip_Collider = true, InvisBlock = true, InvisWall = true, CylinderCollider = true }
+    local NC_NAMES = { NoClip = true, NoClip_Collider = true, InvisBlock = true, InvisWall = true, CylinderCollider = true, WallCollider = true, VisualGuard = true }
     local nc = { on = false, walls = true, extra = {}, parts = {}, boxes = {}, boxCons = {}, conns = {}, gen = 0, accP = 0, accB = 0 }
     local function ncWanted(name) return NC_NAMES[name] or nc.extra[name] end
     local NC_KEEP = { "floor", "stair", "ramp", "ground" }      -- names (of the part or its folder) that stay solid
@@ -1488,7 +1535,18 @@ do
         local ez = math.abs(r.Z) * sz.X + math.abs(u.Z) * sz.Y + math.abs(l.Z) * sz.Z
         return h <= 4 and h < math.min(ex, ez)      -- thick blocks and tall walls are NOT floors
     end
+    -- Anything inside a folder (or model) called Stairs is never touched, whatever it is named, so stairs stay walkable.
+    -- Every way a part can be picked up (names, Walls, the fake elevator, your own names) goes through ncTrack, so this one check covers them all.
+    local function ncInStairs(part)
+        local a = part:FindFirstAncestor("Stairs")
+        while a do
+            if a:IsA("Folder") or a:IsA("Model") then return true end
+            a = a.Parent and a.Parent:FindFirstAncestor("Stairs")
+        end
+        return false
+    end
     local function ncTrack(part)
+        if ncInStairs(part) then return end
         if nc.parts[part] == nil then nc.parts[part] = part.CanCollide end
         if part.CanCollide then part.CanCollide = false end
     end
@@ -4598,8 +4656,8 @@ local function openColorPicker(c)
     local aero = T.kind == "aero"
     local xp = T.kind == "xp"
     local cur = c.get()
-    local rb = (cur == RAINBOW)
-    local base = rb and C(255, 0, 0) or cur
+    local mode = COLOR_MODES[cur] and cur or nil        -- Rainbow, Halloween or Christmas instead of one fixed color
+    local base = mode and animColors[mode] or cur
     local hh, ss, vv = base:ToHSV()
     hh, ss, vv = hh * 360, ss * 100, vv * 100
 
@@ -4626,7 +4684,7 @@ local function openColorPicker(c)
     local function paintSw(col)
         local sw = c._sw
         if sw and sw.Parent then
-            if rb then rainbowSw[sw] = true else rainbowSw[sw] = nil; sw.BackgroundColor3 = col end
+            if mode then rainbowSw[sw] = mode else rainbowSw[sw] = nil; sw.BackgroundColor3 = col end
         end
     end
     local function apply()
@@ -4637,8 +4695,8 @@ local function openColorPicker(c)
         paintSw(col)
     end
     local sliders = {}
-    local rbT
-    local function unRainbow() if rb then rb = false; if rbT then rbT.set(false) end end end
+    local modeT = {}
+    local function unRainbow() if mode then mode = nil; for _, t in pairs(modeT) do t.set(false) end end end
     local rowsY = { 46, 78, 110 }
     local defs = { { "Hue", 360, function(v) hh = v end }, { "Saturation", 100, function(v) ss = v end }, { "Brightness", 100, function(v) vv = v end } }
     local inits = { hh, ss, vv }
@@ -4681,23 +4739,32 @@ local function openColorPicker(c)
         y = gy + rows * (sz + gap) + 26
     end
     if c.rainbow then
-        Label(card, "Rainbow", UDim2.fromOffset(14, y), UDim2.fromOffset(120, 24), { size = 14 })
-        local hold = New("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(cw - 14 - 60, y), Size = UDim2.fromOffset(60, 24) }, card)
-        rbT = ToggleW(hold, rb, function(v)
-            rb = v
-            if v then c.set(RAINBOW); paintSw(nil) else apply() end
-        end)
-        local hb = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, hold)
-        hb.MouseButton1Click:Connect(function() rbT.flip() end)
-        y += 36
+        for _, m in ipairs({ "Rainbow", "Halloween", "Christmas" }) do      -- one at a time: turning one on turns the others off
+            Label(card, m, UDim2.fromOffset(14, y), UDim2.fromOffset(120, 24), { size = 14 })
+            local hold = New("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(cw - 14 - 60, y), Size = UDim2.fromOffset(60, 24) }, card)
+            modeT[m] = ToggleW(hold, mode == m, function(v)
+                if v then
+                    mode = m
+                    for o, t in pairs(modeT) do if o ~= m then t.set(false) end end
+                    c.set(m); paintSw(nil)
+                else
+                    mode = nil; apply()
+                end
+            end)
+            local hb = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, hold)
+            hb.MouseButton1Click:Connect(function() modeT[m].flip() end)
+            y += 32
+        end
+        y += 4
     end
     local function done() ui("close"); closePopup() end
     if c.default then
         Button(card, "Default", UDim2.fromOffset(96, 30), "glass", function()
             local d = c.default()
-            if d == RAINBOW then
-                rb = true; if rbT then rbT.set(true) end
-                c.set(RAINBOW); paintSw(nil)
+            if COLOR_MODES[d] then
+                mode = d
+                for o, t in pairs(modeT) do t.set(o == d) end
+                c.set(d); paintSw(nil)
             else
                 setColor(d)
             end
@@ -4809,7 +4876,7 @@ builders.color = function(parent, c, order)
     corner(sw, 6); stroke(sw, (T.kind == "dandy" and BLACK) or (T.kind == "xp" and C(28, 81, 128)) or WHITE, T.kind == "dandy" and 2.5 or 1.5, (T.kind == "xp" or T.kind == "dandy") and 0 or 0.2)
     if T.kind == "aero" then gloss(sw, 6, 0.45, 0.92) end
     local cur = c.get()
-    if cur == RAINBOW then rainbowSw[sw] = true; sw.BackgroundColor3 = rainbowColor else sw.BackgroundColor3 = cur end
+    if COLOR_MODES[cur] then rainbowSw[sw] = cur; sw.BackgroundColor3 = animColors[cur] else sw.BackgroundColor3 = cur end
     c._sw = sw
     sw.MouseButton1Click:Connect(function() openColorPicker(c) end)
     row.MouseButton1Click:Connect(function() openColorPicker(c) end)
@@ -5401,12 +5468,13 @@ end
 ----------------------------------------------------------------------
 -- PAGES
 ----------------------------------------------------------------------
-local ITEM_LABELS = { GigiHoard = "Twisted Gigi's Stash", Gumball = "Gumballs" }   -- internal name -> official name
+local ITEM_LABELS = { Gumball = "Gumballs", BonBon = "BonBon", ChristmasCookie = "ChristmasCookie", DandyCorn = "DandyCorn", DandyEasterEggs = "DandyEasterEggs", BallOfWax = "BallOfWax" }   -- internal name -> shown name (anything else gets spaces put in: AlarmClock -> Alarm Clock)
 local function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) end
 
 local function resetESPColors()
     local c, d = Cfg.Categories, DEF.Categories
-    for _, k in ipairs({ "Players", "Twisteds", "Tendrils", "BlotHands", "IchorPuddles", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
+    for _, k in ipairs({ "Players", "Twisteds", "Tendrils", "BlotHands", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
+    c.Elevator.FakeColor = d.Elevator.FakeColor
     c.StarPillows.OtherColor = d.StarPillows.OtherColor
     c.StarPillows.TwistedColor = d.StarPillows.TwistedColor
     c.Generators.Colors = deepcopy(d.Generators.Colors)
@@ -5442,9 +5510,6 @@ local function buildESPPage()
     } }
     secs[#secs + 1] = { title = "Toons", controls = { tg("Enabled", cats.Players, "Enabled"), tg("Fill", cats.Players, "Fill"), tg("Highlight Myself", cats.Players, "Self"), cl("Color", cats.Players, "Color", DEF.Categories.Players) } }
     secs[#secs + 1] = { title = "Twisteds", controls = { tg("Enabled", cats.Twisteds, "Enabled"), tg("Fill", cats.Twisteds, "Fill"), cl("Color", cats.Twisteds, "Color", DEF.Categories.Twisteds) } }
-    secs[#secs + 1] = { title = "Twisted Sprout's Tendrils", controls = { tg("Enabled", cats.Tendrils, "Enabled"), tg("Fill", cats.Tendrils, "Fill"), cl("Color", cats.Tendrils, "Color", DEF.Categories.Tendrils) } }
-    secs[#secs + 1] = { title = "Twisted Blot's Hands", controls = { tg("Enabled", cats.BlotHands, "Enabled"), tg("Fill", cats.BlotHands, "Fill"), cl("Color", cats.BlotHands, "Color", DEF.Categories.BlotHands) } }
-    secs[#secs + 1] = { title = "Ichor Puddles", controls = { tg("Enabled", cats.IchorPuddles, "Enabled"), tg("Fill", cats.IchorPuddles, "Fill"), cl("Color", cats.IchorPuddles, "Color", DEF.Categories.IchorPuddles) } }
     secs[#secs + 1] = { title = "Machines", controls = {
         tg("Enabled", cats.Generators, "Enabled"), tg("Fill", cats.Generators, "Fill"),
         tg("Hide Completed Machines", cats.Generators, "HideCompleted"),
@@ -5453,10 +5518,32 @@ local function buildESPPage()
         tg("Color Brusha Debuffed Machines", cats.Generators, "Brusha"), cl("Brusha Debuffed", cats.Generators.Colors, "Brusha", DEF.Categories.Generators.Colors),
         tg("Color Duo Machines With One Worker", cats.Generators, "DuoOne"), cl("Duo, One Worker", cats.Generators.Colors, "DuoOne", DEF.Categories.Generators.Colors),
     } }
+    secs[#secs + 1] = { title = "Twisted Gigi's Stash", controls = { tg("Enabled", cats.GigiStash, "Enabled"), tg("Fill", cats.GigiStash, "Fill"), cl("Color", cats.GigiStash, "Color", DEF.Categories.GigiStash) } }
+    local PILLOW_NAMES = { All = "Everyone's", Mine = "Only Mine", Others = "Only Others'" }
+    local PILLOW_MODES = { ["Everyone's"] = "All", ["Only Mine"] = "Mine", ["Only Others'"] = "Others" }
+    local sp = cats.StarPillows
+    secs[#secs + 1] = { title = "Star Pillows", controls = {
+        tg("Enabled", sp, "Enabled"), tg("Fill", sp, "Fill"),
+        { t = "dropdown", text = "Highlight", get = function() return PILLOW_NAMES[sp.Mode] or "Everyone's" end,
+            options = function() return { "Everyone's", "Only Mine", "Only Others'" } end,
+            set = function(o) sp.Mode = PILLOW_MODES[o] or "All"; espDirty = true; refreshPage() end },
+        cl("Color", sp, "Color", DEF.Categories.StarPillows),
+        tg("Different Color For Others", sp, "OtherDiff"),
+        cl("Others' Color", sp, "OtherColor", DEF.Categories.StarPillows),
+        tg("Show Twisted Astro's Pillows", sp, "ShowTwisted"),
+        cl("Twisted Astro's Color", sp, "TwistedColor", DEF.Categories.StarPillows),
+        { t = "text", text = "Highlight (Everyone's / Only Mine / Only Others') is for Toon pillows. Twisted Astro's pillows do their own thing, with their own switch and color."},
+    } }
+    secs[#secs + 1] = { title = "Bookshelves", controls = { tg("Enabled", cats.Bookshelves, "Enabled"), tg("Fill", cats.Bookshelves, "Fill"), cl("Color", cats.Bookshelves, "Color", DEF.Categories.Bookshelves) } }
+
     secs[#secs + 1] = { title = "Trick or Treat Doors", controls = {
         tg("Enabled", cats.Doors, "Enabled"), tg("Fill", cats.Doors, "Fill"), cl("Color", cats.Doors, "Color", DEF.Categories.Doors), tg("Hide Used Doors", cats.Doors, "HideUsed"),
     } }
-    secs[#secs + 1] = { title = "Bookshelves", controls = { tg("Enabled", cats.Bookshelves, "Enabled"), tg("Fill", cats.Bookshelves, "Fill"), cl("Color", cats.Bookshelves, "Color", DEF.Categories.Bookshelves) } }
+    secs[#secs + 1] = { title = "Elevator", controls = {
+        tg("Enabled", cats.Elevator, "Enabled"), tg("Fill", cats.Elevator, "Fill"), cl("Color", cats.Elevator, "Color", DEF.Categories.Elevator),
+        tg("Highlight Fake Elevator", cats.Elevator, "Fake"), cl("Fake Elevator Color", cats.Elevator, "FakeColor", DEF.Categories.Elevator),
+        { t = "text", text = "Highlights the door of the real elevator. Highlight Fake Elevator also marks the doors of the fake elevators (the Door of a FakeElevator, and the ElevatorDoor of Labs' fake elevator) in their own color, so you can tell them apart."},
+    } }
 
     local it = cats.Items
     local itemCtl = {
@@ -5480,21 +5567,9 @@ local function buildESPPage()
         secs[#secs + 1] = { title = "Item Colors", controls = ic }
     end
 
-    local PILLOW_NAMES = { All = "Everyone's", Mine = "Only Mine", Others = "Only Others'" }
-    local PILLOW_MODES = { ["Everyone's"] = "All", ["Only Mine"] = "Mine", ["Only Others'"] = "Others" }
-    local sp = cats.StarPillows
-    secs[#secs + 1] = { title = "Star Pillows", controls = {
-        tg("Enabled", sp, "Enabled"), tg("Fill", sp, "Fill"),
-        { t = "dropdown", text = "Highlight", get = function() return PILLOW_NAMES[sp.Mode] or "Everyone's" end,
-            options = function() return { "Everyone's", "Only Mine", "Only Others'" } end,
-            set = function(o) sp.Mode = PILLOW_MODES[o] or "All"; espDirty = true; refreshPage() end },
-        cl("Color", sp, "Color", DEF.Categories.StarPillows),
-        tg("Different Color For Others", sp, "OtherDiff"),
-        cl("Others' Color", sp, "OtherColor", DEF.Categories.StarPillows),
-        tg("Show Twisted Astro's Pillows", sp, "ShowTwisted"),
-        cl("Twisted Astro's Color", sp, "TwistedColor", DEF.Categories.StarPillows),
-        { t = "text", text = "Highlight (Everyone's / Only Mine / Only Others') is for Toon pillows. Twisted Astro's pillows do their own thing, with their own switch and color."},
-    } }
+    secs[#secs + 1] = { title = "Twisted Sprout's Tendrils", controls = { tg("Enabled", cats.Tendrils, "Enabled"), tg("Fill", cats.Tendrils, "Fill"), cl("Color", cats.Tendrils, "Color", DEF.Categories.Tendrils) } }
+    secs[#secs + 1] = { title = "Twisted Blot's Hands", controls = { tg("Enabled", cats.BlotHands, "Enabled"), tg("Fill", cats.BlotHands, "Fill"), cl("Color", cats.BlotHands, "Color", DEF.Categories.BlotHands) } }
+    secs[#secs + 1] = { title = "Ichor Puddles", controls = { tg("Enabled", cats.IchorPuddles, "Enabled"), tg("Fill", cats.IchorPuddles, "Fill"), cl("Color", cats.IchorPuddles, "Color", DEF.Categories.IchorPuddles) } }
     return secs
 end
 
@@ -5794,7 +5869,7 @@ end
 local function buildWorldPage()
     return {
         { title = "Noclip", controls = {
-            { t = "text", text = "Noclip changes the map, not you. It turns off collision for everything named NoClip, NoClip_Collider, InvisBlock, InvisWall and CylinderCollider, and also for the DoorHitbox, the DoorVisible and the whole ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone), and optionally for the parts inside every Walls folder, so walls, columns and window frames stop being a problem. Floors stay solid so you don't fall into the void. New rooms are handled automatically, everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
+            { t = "text", text = "Noclip changes the map, not you. It turns off collision for everything named NoClip, NoClip_Collider, InvisBlock, InvisWall, CylinderCollider, WallCollider and VisualGuard, and also for the DoorHitbox, the DoorVisible and the whole ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone), and optionally for the parts inside every Walls folder, so walls, columns and window frames stop being a problem. Floors stay solid so you don't fall into the void, and so does everything inside a folder called Stairs, whatever it is named. New rooms are handled automatically, everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
             { t = "toggle", text = "Noclip", get = function() return SP.noclipOn() end,
                 set = function(v) SP.setNoclip(v); toast(v and "Noclip on." or "Noclip off, collisions restored.", "info") end },
             { t = "toggle", text = "Include Walls Folders (Keeps Floors)", get = function() return SP.noclipWalls() end,
@@ -10603,6 +10678,7 @@ end)()
 
 --#endregion page-sound
 --#region binds
+do
 ----------------------------------------------------------------------
 -- KEYBINDS AND ON-SCREEN BUTTONS FOR TOGGLES
 -- Right-click any toggle in the hub for a menu: set a keybind, add an on-screen button. A toggle is found again by an id made of its tab,
@@ -11006,6 +11082,7 @@ local function buildBindsPage()
     return secs
 end
 Binds.buildPage = buildBindsPage
+end
 
 --#endregion binds
 --#region tabs
@@ -11066,10 +11143,11 @@ local ESP_GROUPS = {
     ["General"] = { g = "Basics" },
     ["Toons"] = { g = "Players" },
     ["Twisteds"] = { g = "Twisteds" },
+    ["Machines"] = { g = "Objects" }, ["Twisted Gigi's Stash"] = { g = "Objects" }, ["Star Pillows"] = { g = "Objects" },
+    ["Bookshelves"] = { g = "Objects" }, ["Trick or Treat Doors"] = { g = "Objects" }, ["Elevator"] = { g = "Objects" },
+    ["Items"] = { g = "Items" }, ["Item Colors"] = { g = "Items" },
     ["Twisted Sprout's Tendrils"] = { g = "Hazards", r = "Sprout's Tendrils" },   -- the full name is 25 characters, too wide for the rail in most skins
     ["Twisted Blot's Hands"] = { g = "Hazards", r = "Blot's Hands" }, ["Ichor Puddles"] = { g = "Hazards" },
-    ["Machines"] = { g = "Objects" }, ["Trick or Treat Doors"] = { g = "Objects" }, ["Bookshelves"] = { g = "Objects" },
-    ["Items"] = { g = "Items" }, ["Item Colors"] = { g = "Items" }, ["Star Pillows"] = { g = "Items" },
 }
 local SKILL_GROUPS = {
     ["More Skill Checks"] = { g = "Basics", t = "Main" }, ["Live Values"] = { g = "Basics" },
@@ -11108,7 +11186,7 @@ UI.tabs = {
     { id = "pursuer",    name = "Pursuer",      icon = "fun",        build = grouped(buildPursuerPage, PURSUER_GROUPS) },
     { id = "customizer", name = "Customizer",   icon = "customizer", build = grouped(Cust.build, CUSTOMIZER_GROUPS) },
     { id = "sound",      name = "Sound",        icon = "fun",        build = grouped(UI.snd.build, SOUND_GROUPS) },   -- icon: reusing "fun" until the skins get a speaker icon
-    { id = "binds",      name = "Keybinds",     icon = "automation", build = grouped(Binds.buildPage, {}) },
+    { id = "binds",      name = "Keybinds",     icon = "automation", build = grouped(UI.binds.buildPage, {}) },
     { id = "configs",    name = "Configs",      icon = "configs",    build = buildConfigsPage },
     { id = "appearance", name = "Appearance",   icon = "appearance", build = buildAppearancePage },
 }
