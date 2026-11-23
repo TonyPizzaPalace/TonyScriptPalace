@@ -1560,14 +1560,14 @@ do
     --   * every part inside a "Walls" folder/model EXCEPT floors, so walls, columns and window frames stop blocking
     --     you but you do not fall through the ground,
     --   * inside Labs' LabsFakeElevator only: DoorHitbox, DoorVisible and the whole ElevatorDoor model.
-    --   * Everything mode (on by default): every anchored part of CurrentRoom except the room's Walls.Floor, anything with a Humanoid above it,
-    --     and what the next line says. A room that has no Walls.Floor keeps its floor-looking parts, so it can never drop you into the void.
+    --   * Everything mode (on by default): every anchored part in the whole workspace (room, elevator, ...) except anything named Floor or FloorIchor or
+    --     inside a Floor folder, the Baseplate far below the map, anything with a Humanoid above it (players, Twisteds), the camera and the terrain.
     -- Whatever the rule, nothing inside a folder or model named Stairs is ever touched.
     -- Original values are remembered and restored, new parts (new rooms) are caught as they appear, and the game
     -- turning collision back on is undone.
     ------------------------------------------------------------------
     local NC_NAMES = { NoClip = true, NoClip_Collider = true, InvisBlock = true, InvisWall = true, CylinderCollider = true, WallCollider = true, VisualGuard = true }
-    local nc = { on = false, walls = true, all = true, extra = {}, parts = {}, boxes = {}, boxCons = {}, conns = {}, gen = 0, accP = 0, accB = 0, accR = 0 }
+    local nc = { on = false, walls = true, all = true, extra = {}, parts = {}, boxes = {}, boxCons = {}, conns = {}, gen = 0, accP = 0, accB = 0, accR = 0, sweeping = false }
     local function ncWanted(name) return NC_NAMES[name] or nc.extra[name] end
     local NC_KEEP = { "floor", "stair", "ramp", "ground" }      -- names (of the part or its folder) that stay solid
     local function ncIsFloor(part)            -- stays solid: named like a floor/stairs, or a THIN horizontal slab
@@ -1593,11 +1593,13 @@ do
         end
         return false
     end
-    -- "Everything" mode: every fixed part of the room you are in, EXCEPT the room's own floor (the Floor folder inside Walls), Stairs and character-like models.
+    -- "Everything" mode: every fixed part in the whole game (the room, the elevator, ...) EXCEPT floors, Stairs and characters.
+    -- A floor is anything named Floor or FloorIchor (the Ichor floor tiles), or anything inside a folder or model named Floor.
     local function ncInFloor(part)
+        if part.Name == "Floor" or part.Name == "FloorIchor" then return true end
         local a = part:FindFirstAncestor("Floor")
         while a do
-            if (a:IsA("Folder") or a:IsA("Model")) and a.Parent and a.Parent.Name == "Walls" then return true end
+            if a:IsA("Folder") or a:IsA("Model") then return true end
             a = a.Parent and a.Parent:FindFirstAncestor("Floor")
         end
         return false
@@ -1612,7 +1614,7 @@ do
     end
     local function ncTrack(part)
         if ncInStairs(part) then return end
-        if nc.all and ncInFloor(part) then return end          -- in Everything mode the room's floor always stays solid, whatever rule picked it
+        if nc.all and ncInFloor(part) then return end          -- in Everything mode floors always stay solid, whatever rule picked them
         if nc.parts[part] == nil then nc.parts[part] = part.CanCollide end
         if part.CanCollide then part.CanCollide = false end
     end
@@ -1653,36 +1655,24 @@ do
         end
     end
     local function ncInteresting(name) return ncWanted(name) or name == NC_FAKE_ELEVATOR or (nc.walls and name == "Walls") end
-    local function ncRoomHasFloor(room)
-        local w = room:FindFirstChild("Walls")
-        return w ~= nil and w:FindFirstChild("Floor") ~= nil
+    local function ncEverything(part)             -- should the Everything rule take this part?
+        if not part.Anchored or part:IsA("Terrain") then return false end      -- only fixed map parts, never physics parts or the terrain
+        if part.Parent == Workspace and part.Name == "Baseplate" then return false end   -- the net far below the map that catches you if you fall
+        local cam = Workspace.CurrentCamera
+        if cam and part:IsDescendantOf(cam) then return false end               -- client-only visuals
+        return not ncInRig(part)                                                -- characters (you, other players, Twisteds) are never touched
     end
-    local function ncEverything(part, hasFloor)   -- should the Everything rule take this part? (a room with no Walls.Floor keeps its floor-looking parts, so you can never fall into the void)
-        if not part.Anchored or ncInRig(part) then return false end
-        if not hasFloor and ncIsFloor(part) then return false end
-        return true
-    end
-    local function ncSweepRooms(gen)              -- every collidable part in every room that the Everything rule takes. Only CurrentRoom: the elevator and the lobby are never touched.
-        local cr = Workspace:FindFirstChild("CurrentRoom")
-        if not cr then return end
+    local function ncSweepAll(gen)                -- every collidable part in the whole workspace that the Everything rule takes (floors and Stairs are refused by ncTrack)
         local n = 0
-        for _, room in ipairs(cr:GetChildren()) do
-            local hasFloor = ncRoomHasFloor(room)
-            for _, d in ipairs(room:GetDescendants()) do
-                if gen and (nc.gen ~= gen or not alive) then return end
-                if d:IsA("BasePart") and d.CanCollide and nc.parts[d] == nil and ncEverything(d, hasFloor) then ncTrack(d) end
-                n += 1
-                if gen and n % 3000 == 0 then task.wait() end
-            end
+        for _, d in ipairs(Workspace:GetDescendants()) do
+            if gen and (nc.gen ~= gen or not alive) then return end
+            if d:IsA("BasePart") and d.CanCollide and nc.parts[d] == nil and ncEverything(d) then ncTrack(d) end
+            n += 1
+            if gen and n % 1500 == 0 then task.wait() end
         end
     end
     local function ncAddEverything(d)             -- a part that appears while Everything mode is on
-        local cr = Workspace:FindFirstChild("CurrentRoom")
-        if not cr or not d:IsDescendantOf(cr) then return end
-        local room = d
-        while room.Parent and room.Parent ~= cr do room = room.Parent end
-        if room.Parent ~= cr then return end
-        if ncEverything(d, ncRoomHasFloor(room)) then ncTrack(d) end
+        if d.CanCollide and ncEverything(d) then ncTrack(d) end
     end
     local function ncScan(gen)                -- one pass over what already exists, in slices so it never hitches
         local n = 0
@@ -1692,7 +1682,7 @@ do
             n += 1
             if n % 4000 == 0 then task.wait() end
         end
-        if nc.all and nc.gen == gen then pcall(ncSweepRooms, gen) end
+        if nc.all and nc.gen == gen then pcall(ncSweepAll, gen) end
     end
     local function ncStart()
         nc.gen += 1
@@ -1704,7 +1694,11 @@ do
         task.spawn(ncScan, gen)
         nc.conns[2] = RunService.Heartbeat:Connect(function(dt)
             nc.accP += dt; nc.accB += dt; nc.accR += dt
-            if nc.all and nc.accR >= 1.5 then nc.accR = 0; pcall(ncSweepRooms) end        -- parts that turned solid or showed up since (a few milliseconds)
+            if nc.all and nc.accR >= 1.5 and not nc.sweeping then       -- parts that turned solid or showed up since; sliced over several frames so it never hitches
+                nc.accR, nc.sweeping = 0, true
+                local g = nc.gen
+                task.spawn(function() pcall(ncSweepAll, g); nc.sweeping = false end)
+            end
             if nc.accP >= 0.25 then                                  -- keep tracked parts off
                 nc.accP = 0
                 for part in pairs(nc.parts) do
@@ -5237,7 +5231,7 @@ UI.hints = {
     ["Sync Animation Speed With Stats"] = "Walk, run and extraction animations match your speed. Idle is left alone.",
     ["Ability Animations Follow Speed"] = "Ability animations match your speed while you move, or your decode speed while you extract.",
     ["Fullbright"] = "See everything. Raises the ambient light, removes shadows and fog.",
-    ["Everything Except Floors"] = "Noclip turns off collision for every fixed part of the room, except the floor and any Stairs.",
+    ["Everything Except Floors"] = "Noclip turns off collision for every fixed part in the game, except floors, Stairs and characters.",
     ["Fix Stuck Sprint Speed"] = "After a revive, fixes sprinting that drains stamina but keeps you at walking speed.",
     ["Hide Ichor Splats"] = "Hides the ink that covers your screen when you step in an Ichor puddle.",
     ["Fullbright Brightness"] = "How bright the ambient light is while Fullbright is on.",
@@ -5977,7 +5971,7 @@ end
 local function buildWorldPage()
     return {
         { title = "Noclip", controls = {
-            { t = "text", text = "Noclip changes the map, not you. With Everything Except Floors on (the default) it turns off collision for every fixed part of the room you are in, so walls, props, machines and doors stop being a problem. It leaves the room's own floor (the Floor folder inside Walls), anything inside a Stairs folder and character-like models such as Twisteds alone, so you never fall, and it never touches the elevator or the lobby. Whatever that setting, anything named NoClip, NoClip_Collider, InvisBlock, InvisWall, CylinderCollider, WallCollider or VisualGuard is turned off too, plus the DoorHitbox, the DoorVisible and the ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone). Everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
+            { t = "text", text = "Noclip changes the map, not you. With Everything Except Floors on (the default) it turns off collision for every fixed part in the game, not only the room you are in (the elevator too), so walls, props, machines and doors stop being a problem. It leaves alone anything named Floor or FloorIchor (a part, or everything inside a Floor folder), everything inside a Stairs folder, the Baseplate far below the map that catches you if you fall, and every character (you, other players and Twisteds), so you never fall and your character is never touched. Whatever that setting, anything named NoClip, NoClip_Collider, InvisBlock, InvisWall, CylinderCollider, WallCollider or VisualGuard is turned off too, plus the DoorHitbox, the DoorVisible and the ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone). Everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
             { t = "toggle", text = "Noclip", get = function() return SP.noclipOn() end,
                 set = function(v) SP.setNoclip(v); toast(v and "Noclip on." or "Noclip off, collisions restored.", "info") end },
             { t = "toggle", text = "Everything Except Floors", get = function() return SP.noclipAll() end, set = function(v) SP.setNoclipAll(v) end },
