@@ -646,7 +646,7 @@ local Speed = {
 -- AutoRun = hold sprint for you on treadmill machines, stopping at RunStop stamina and starting again at RunResume.
 -- Peak = the highest stamina ever seen (used as the slider maximum).
 -- StopMode/ResumeMode: "Number" uses RunStop/RunResume, "Fraction" uses StopFrac/ResumeFrac (like "3/4") of your maximum stamina.
-local Stam = { Infinite = false, ShowActual = false, Icon = true, FixStuck = true, AutoRun = false, RunStop = 20, RunResume = 100, Peak = 0,
+local Stam = { Infinite = false, ShowActual = false, Icon = true, AutoRun = false, RunStop = 20, RunResume = 100, Peak = 0,
     StopMode = "Number", ResumeMode = "Number", StopFrac = "1/8", ResumeFrac = "1/2" }
 local STAM_MODES = { "Number", "Fraction" }
 -- "3/4", "1/2", "50%" or "0.75" -> 0..1 (nil if it cannot be read)
@@ -732,12 +732,11 @@ do
         end,
     }
     Features.stamina = {
-        serialize = function() return { ShowActual = Stam.ShowActual, Icon = Stam.Icon, FixStuck = Stam.FixStuck, RunStop = Stam.RunStop, RunResume = Stam.RunResume, StopMode = Stam.StopMode, ResumeMode = Stam.ResumeMode, StopFrac = Stam.StopFrac, ResumeFrac = Stam.ResumeFrac, Peak = Stam.Peak } end,   -- the Infinite Stamina and Auto Run switches are saved by the "switches" entry
+        serialize = function() return { ShowActual = Stam.ShowActual, Icon = Stam.Icon, RunStop = Stam.RunStop, RunResume = Stam.RunResume, StopMode = Stam.StopMode, ResumeMode = Stam.ResumeMode, StopFrac = Stam.StopFrac, ResumeFrac = Stam.ResumeFrac, Peak = Stam.Peak } end,   -- the Infinite Stamina and Auto Run switches are saved by the "switches" entry
         apply = function(data)
             if type(data) ~= "table" then return end
             if type(data.ShowActual) == "boolean" then Stam.ShowActual = data.ShowActual end
             if type(data.Icon) == "boolean" then Stam.Icon = data.Icon end
-            if type(data.FixStuck) == "boolean" then Stam.FixStuck = data.FixStuck end
             Stam.RunStop = math.clamp(tonumber(data.RunStop) or Stam.RunStop, 0, 9999)
             Stam.RunResume = math.clamp(tonumber(data.RunResume) or Stam.RunResume, 0, 9999)
             local sm, sf = stamLoadMode(data.StopMode)
@@ -879,7 +878,7 @@ function Fun.activeCount() local n = 0; local now = os.clock(); for _, e in ipai
 ----------------------------------------------------------------------
 -- MOVEMENT ENGINE  (reads the player's Stats folder, writes Humanoid.WalkSpeed)
 ----------------------------------------------------------------------
-local SP = { last = nil, learned = {}, peak = {}, flag = nil, lastTrust = nil, onFlagUI = nil, fixed = 0 }
+local SP = { last = nil, learned = {}, peak = {}, flag = nil, lastTrust = nil, onFlagUI = nil }
 do
     local RS = game:GetService("ReplicatedStorage")
     local statsCache, statsPath = nil, ""
@@ -907,6 +906,11 @@ do
         end
         return nil
     end
+    -- Invalidate stats cache immediately on character spawn (fixes stale stamina values after revive)
+    LP.CharacterAdded:Connect(function()
+        statsCache = nil
+        statsRetry = 0
+    end)
     local function numOf(x)
         if typeof(x) == "Instance" and x:IsA("ValueBase") then x = x.Value end
         if type(x) == "number" then return x end
@@ -964,7 +968,7 @@ do
     -- out of stamina, write the speed a real sprint would give you, play the Run animation and
     -- show the sprint icon. Nothing is sent to the server.
     ------------------------------------------------------------------
-    local fk = { char = nil, want = false, active = false, was = false, wasRepair = false, fix = false, stuck = nil, wrote = nil, lastSprint = -10, lastPress = -10,
+    local fk = { char = nil, want = false, active = false, was = false, wrote = nil, lastSprint = -10, lastPress = -10,
         action = nil, conns = {}, search = 0, iconShown = false, suppress = false }
     local function touchOnly() return UIS.TouchEnabled and not UIS.KeyboardEnabled end
     local function toggleLike()                       -- true when the game's "Toggle Sprint" setting is on
@@ -1019,7 +1023,7 @@ do
 
     -- returns active (fake running right now), fatigued
     local function fakeUpdate(ch, hum, stats, gameSprint)
-        if fk.char ~= ch then fk.char = ch; fk.want = false; fk.active = false; fk.wrote = nil; fk.was = false; fk.wasRepair = false; fk.fix = false; fk.stuck = nil end
+        if fk.char ~= ch then fk.char = ch; fk.want = false; fk.active = false; fk.wrote = nil; fk.was = false end
         bindAction()
         local now = os.clock()
         if gameSprint then fk.lastSprint = now end
@@ -1034,8 +1038,16 @@ do
             if gameSprint then fk.want = true
             elseif not fatigued and not fk.active then fk.want = false end
         end
-        if blocked or gameSprint or not fk.want then fk.active = false
-        elseif fatigued then fk.active = true end          -- once on it stays on until you stop running
+        -- Normal case: game sprint is working, don't fake sprint
+        -- But if game says sprinting (gameSprint) yet our speed is at walk speed (sprint broken after revive), allow fake sprint
+        local walkV = statNum(stats, "WalkSpeed", 0) * statNum(stats, "SpeedModifier", 1)
+        local runV = statNum(stats, "RunSpeed", 0) * statNum(stats, "RunSpeedModifier", 1)
+        local sprintBroken = gameSprint and math.abs(hum.WalkSpeed - walkV) <= 0.5 and runV - walkV > 0.5
+        if blocked or (gameSprint and not sprintBroken) or not fk.want then
+            fk.active = false
+        elseif fatigued or sprintBroken then
+            fk.active = true
+        end
         return fk.active, fatigued
     end
 
@@ -1478,54 +1490,22 @@ do
             if SP.lastTrust and trust < SP.lastTrust then SP.onFlag(SP.lastTrust, trust) end
             SP.lastTrust = trust
         end
-        -- STUCK SPRINT REPAIR. The game applies sprint speed on YOUR client: its SprintPredictor binds to one Humanoid and Stats folder and only
-        -- predicts a sprint while the speed it last saw matches your Stats. After you are revived that can go wrong, and then the server keeps
-        -- sprinting you (the stamina drains, Stats.Sprinting is true) while nothing ever raises your speed. So: the server says you are sprinting
-        -- and you hold the key, yet your speed has sat at walk speed for 0.4 s -> write the sprint speed the game's own formula gives
-        -- (clamp(RunSpeed * RunSpeedModifier, 0, 75)), exactly like the fake run does, and put the walk speed back when you let go.
-        local repair = false
-        if Stam.FixStuck and running and not fake and not Speed.Enabled and not scOn then
-            local walkV = statNum(stats, "WalkSpeed", 0) * statNum(stats, "SpeedModifier", 1)
-            local ws, rootP, dec = hum.WalkSpeed, hum.RootPart, ch:FindFirstChild("Decoding")
-            local blocked = hum.Health <= 0 or ws <= 0.01 or ch:FindFirstChild("BoxAbilityActive") ~= nil or ch:GetAttribute("TreadmillDazed") == true
-                or ch:GetAttribute("IceSkatingMode") == true or (rootP ~= nil and rootP.Anchored)
-                or (dec ~= nil and dec:IsA("ObjectValue") and dec.Value ~= nil)      -- the states where the game decides your speed itself
-            if not blocked and vanilla - walkV > 0.5 then
-                if fk.fix then
-                    repair = true
-                    if math.abs(ws - (fk.wrote or vanilla)) > 0.75 and math.abs(ws - walkV) > 0.5 then   -- something else now owns your speed (a slow, a stun): let go
-                        fk.fix, repair = false, false
-                    end
-                elseif math.abs(ws - walkV) <= 0.5 then
-                    fk.stuck = fk.stuck or os.clock()
-                    if os.clock() - fk.stuck >= 0.4 then fk.fix, repair = true, true; SP.fixed += 1 end
-                else
-                    fk.stuck = nil
-                end
-            else
-                fk.fix, fk.stuck = false, nil
-            end
-        else
-            fk.fix, fk.stuck = false, nil
-        end
-        local assist = fake or repair                              -- either way we are the one setting your speed right now
+        local assist = fake                              -- we are the one setting your speed when fake running
         -- fake running without the speed modifier writes the plain run speed; with it, your adjusted run speed
         local target = (assist and not Speed.Enabled and not scOn) and vanilla or final
-        if repair and not fake then target = math.clamp(target, 0, 75) end
         if (Speed.Enabled or assist or scOn) and hum.WalkSpeed > 0.01 and vanilla > 0 then   -- 0 = stunned/frozen, leave it alone
             hum.WalkSpeed = target
             if assist then fk.wrote = target end
         end
         if fk.was and not assist then
-            -- fake run / repair ended: the server will not resend the walk speed on its own, so put it back
-            -- (after a repair the game's own sprint logic may be the broken part, so there it is put back at once)
-            if not Speed.Enabled and (not sprinting or fk.wasRepair) and fk.wrote and math.abs(hum.WalkSpeed - fk.wrote) < 0.01 then
+            -- fake run ended: the server will not resend the walk speed on its own, so put it back
+            if not Speed.Enabled and not sprinting and fk.wrote and math.abs(hum.WalkSpeed - fk.wrote) < 0.01 then
                 local w = statNum(stats, "WalkSpeed", nil)
                 if w then hum.WalkSpeed = w * statNum(stats, "SpeedModifier", 1) end
             end
             fk.wrote = nil
         end
-        fk.was, fk.wasRepair = assist, repair
+        fk.was = assist
         if SP.scWas and not scOn and not Speed.Enabled and not fake and not sprinting and hum.WalkSpeed > 0.01 then
             hum.WalkSpeed = vanilla                                -- skill check effect ended: the server will not resend the speed
         end
@@ -1545,7 +1525,7 @@ do
         SP.last = { ok = true, running = running, base = base, mod = mod, vanilla = vanilla, final = final, capped = capped,
             floor = floor, floorSrc = src, statsPath = statsPath, humSpeed = hum.WalkSpeed,
             limit = limit, limitSource = limitSource, trust = trust,
-            fake = fake, repair = repair, fatigued = fatigued, stam = sc and sc.Value, stamMax = sm and sm.Value, autoRun = ar.state, autoStop = ar.stopV, autoResume = ar.resumeV }
+            fake = fake, fatigued = fatigued, stam = sc and sc.Value, stamMax = sm and sm.Value, autoRun = ar.state, autoStop = ar.stopV, autoResume = ar.resumeV }
     end
     pcall(function() RunService:UnbindFromRenderStep(RS_NAME) end)
     local warned = false
@@ -5232,7 +5212,6 @@ UI.hints = {
     ["Ability Animations Follow Speed"] = "Ability animations match your speed while you move, or your decode speed while you extract.",
     ["Fullbright"] = "See everything. Raises the ambient light, removes shadows and fog.",
     ["Everything Except Floors"] = "Noclip turns off collision for every fixed part in the game, except floors, Stairs and characters.",
-    ["Fix Stuck Sprint Speed"] = "After a revive, fixes sprinting that drains stamina but keeps you at walking speed.",
     ["Hide Ichor Splats"] = "Hides the ink that covers your screen when you step in an Ichor puddle.",
     ["Fullbright Brightness"] = "How bright the ambient light is while Fullbright is on.",
     ["Walk Speed (Units Added)/All Floors"] = "Extra walk speed on every floor.",
@@ -5695,9 +5674,6 @@ local function buildMovementPage()
             end },
         { t = "toggle", text = "Show Actual Stamina", get = function() return Stam.ShowActual end, set = function(v) Stam.ShowActual = v end },
         { t = "toggle", text = "Show Sprint Icon While Fake Running", get = function() return Stam.Icon end, set = function(v) Stam.Icon = v end },
-        { t = "toggle", text = "Fix Stuck Sprint Speed", get = function() return Stam.FixStuck end, set = function(v) Stam.FixStuck = v end },
-        { t = "readout", text = "Stuck Sprints Fixed", get = function() return tostring(SP.fixed) end },
-        { t = "text", text = "Fix Stuck Sprint Speed is for after you are revived: the game can lose track of your sprint, so the stamina drains while you keep moving at walking speed. If the server says you are sprinting and you hold the key, but your speed has stayed at walking speed for 0.4 seconds, this sets the sprint speed the game would have given you and puts the walking speed back when you let go. It works with Infinite Stamina on or off, and does nothing while the game itself is deciding your speed (machines, ice skating, stuns). The counter shows how many times it had to step in."},
         { t = "text", text = "Infinite Stamina is smoke and mirrors. The server still thinks you're out of stamina and walking, so we set your speed to what a real sprint would give you (your Run adjustments below count if the speed modifier is on) and play the run animation. It kicks in when you try to run while empty. Show Actual Stamina gets rid of the fake full bar if you'd rather know the truth."},
     } }
     secs[#secs + 1] = { title = "Animation Sync", controls = {
