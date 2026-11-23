@@ -253,6 +253,7 @@ local Cfg = {
         Tendrils   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Sprout's tendrils (SproutTendril)
         GigiStash  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Gigi's Stash (the GigiHoard model in the room's Items folder)
         Elevator   = { Enabled = true, Fill = true, Color = C(0, 255, 0), Fake = true, FakeColor = C(255, 0, 0) },   -- the real elevator's ElevatorDoor, and optionally the fake elevators' doors
+        RazzleVines = { Enabled = true, Fill = true, Color = C(255, 0, 0) },     -- Twisted Razzle & Dazzle's vines (the RazzleVine MeshParts in the room's FreeArea)
         BlotHands  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Blot's hands (the Arm in each BlotHand_R / BlotHand_L)
         IchorPuddles = { Enabled = true, Fill = true, Color = C(255, 0, 0) },   -- everything in the room's Puddles folder except Twisted Barnaby
         Generators = { Enabled = true, Fill = true, HideCompleted = false, Brusha = true, DuoOne = true, Colors = {
@@ -477,6 +478,17 @@ do
                     end
                 end
             end
+            if cats.RazzleVines.Enabled then
+                -- Razzle & Dazzle's vines are RazzleVine MeshParts put straight into the room's FreeArea (or into the room when it has none)
+                local function addVines(folder)
+                    for _, c in ipairs(folder:GetChildren()) do
+                        if c.Name == "RazzleVine" then add(c, cats.RazzleVines.Color, "RazzleVines") end
+                    end
+                end
+                local fa = room:FindFirstChild("FreeArea")
+                if fa then addVines(fa) end
+                addVines(room)
+            end
             -- the Puddles folder holds Ichor puddles and also Twisted Barnaby (TBarnaby_v3), who belongs to the Twisted ESP
             local puddles = room:FindFirstChild("Puddles")
             if puddles then
@@ -634,7 +646,7 @@ local Speed = {
 -- AutoRun = hold sprint for you on treadmill machines, stopping at RunStop stamina and starting again at RunResume.
 -- Peak = the highest stamina ever seen (used as the slider maximum).
 -- StopMode/ResumeMode: "Number" uses RunStop/RunResume, "Fraction" uses StopFrac/ResumeFrac (like "3/4") of your maximum stamina.
-local Stam = { Infinite = false, ShowActual = false, Icon = true, AutoRun = false, RunStop = 20, RunResume = 100, Peak = 0,
+local Stam = { Infinite = false, ShowActual = false, Icon = true, FixStuck = true, AutoRun = false, RunStop = 20, RunResume = 100, Peak = 0,
     StopMode = "Number", ResumeMode = "Number", StopFrac = "1/8", ResumeFrac = "1/2" }
 local STAM_MODES = { "Number", "Fraction" }
 -- "3/4", "1/2", "50%" or "0.75" -> 0..1 (nil if it cannot be read)
@@ -720,11 +732,12 @@ do
         end,
     }
     Features.stamina = {
-        serialize = function() return { ShowActual = Stam.ShowActual, Icon = Stam.Icon, RunStop = Stam.RunStop, RunResume = Stam.RunResume, StopMode = Stam.StopMode, ResumeMode = Stam.ResumeMode, StopFrac = Stam.StopFrac, ResumeFrac = Stam.ResumeFrac, Peak = Stam.Peak } end,   -- the Infinite Stamina and Auto Run switches are saved by the "switches" entry
+        serialize = function() return { ShowActual = Stam.ShowActual, Icon = Stam.Icon, FixStuck = Stam.FixStuck, RunStop = Stam.RunStop, RunResume = Stam.RunResume, StopMode = Stam.StopMode, ResumeMode = Stam.ResumeMode, StopFrac = Stam.StopFrac, ResumeFrac = Stam.ResumeFrac, Peak = Stam.Peak } end,   -- the Infinite Stamina and Auto Run switches are saved by the "switches" entry
         apply = function(data)
             if type(data) ~= "table" then return end
             if type(data.ShowActual) == "boolean" then Stam.ShowActual = data.ShowActual end
             if type(data.Icon) == "boolean" then Stam.Icon = data.Icon end
+            if type(data.FixStuck) == "boolean" then Stam.FixStuck = data.FixStuck end
             Stam.RunStop = math.clamp(tonumber(data.RunStop) or Stam.RunStop, 0, 9999)
             Stam.RunResume = math.clamp(tonumber(data.RunResume) or Stam.RunResume, 0, 9999)
             local sm, sf = stamLoadMode(data.StopMode)
@@ -866,7 +879,7 @@ function Fun.activeCount() local n = 0; local now = os.clock(); for _, e in ipai
 ----------------------------------------------------------------------
 -- MOVEMENT ENGINE  (reads the player's Stats folder, writes Humanoid.WalkSpeed)
 ----------------------------------------------------------------------
-local SP = { last = nil, learned = {}, peak = {}, flag = nil, lastTrust = nil, onFlagUI = nil }
+local SP = { last = nil, learned = {}, peak = {}, flag = nil, lastTrust = nil, onFlagUI = nil, fixed = 0 }
 do
     local RS = game:GetService("ReplicatedStorage")
     local statsCache, statsPath = nil, ""
@@ -951,7 +964,7 @@ do
     -- out of stamina, write the speed a real sprint would give you, play the Run animation and
     -- show the sprint icon. Nothing is sent to the server.
     ------------------------------------------------------------------
-    local fk = { char = nil, want = false, active = false, was = false, wrote = nil, lastSprint = -10, lastPress = -10,
+    local fk = { char = nil, want = false, active = false, was = false, wasRepair = false, fix = false, stuck = nil, wrote = nil, lastSprint = -10, lastPress = -10,
         action = nil, conns = {}, search = 0, iconShown = false, suppress = false }
     local function touchOnly() return UIS.TouchEnabled and not UIS.KeyboardEnabled end
     local function toggleLike()                       -- true when the game's "Toggle Sprint" setting is on
@@ -1006,7 +1019,7 @@ do
 
     -- returns active (fake running right now), fatigued
     local function fakeUpdate(ch, hum, stats, gameSprint)
-        if fk.char ~= ch then fk.char = ch; fk.want = false; fk.active = false; fk.wrote = nil; fk.was = false end
+        if fk.char ~= ch then fk.char = ch; fk.want = false; fk.active = false; fk.wrote = nil; fk.was = false; fk.wasRepair = false; fk.fix = false; fk.stuck = nil end
         bindAction()
         local now = os.clock()
         if gameSprint then fk.lastSprint = now end
@@ -1465,21 +1478,54 @@ do
             if SP.lastTrust and trust < SP.lastTrust then SP.onFlag(SP.lastTrust, trust) end
             SP.lastTrust = trust
         end
-        -- fake running without the speed modifier writes the plain run speed; with it, your adjusted run speed
-        local target = (fake and not Speed.Enabled and not scOn) and vanilla or final
-        if (Speed.Enabled or fake or scOn) and hum.WalkSpeed > 0.01 and vanilla > 0 then   -- 0 = stunned/frozen, leave it alone
-            hum.WalkSpeed = target
-            if fake then fk.wrote = target end
+        -- STUCK SPRINT REPAIR. The game applies sprint speed on YOUR client: its SprintPredictor binds to one Humanoid and Stats folder and only
+        -- predicts a sprint while the speed it last saw matches your Stats. After you are revived that can go wrong, and then the server keeps
+        -- sprinting you (the stamina drains, Stats.Sprinting is true) while nothing ever raises your speed. So: the server says you are sprinting
+        -- and you hold the key, yet your speed has sat at walk speed for 0.4 s -> write the sprint speed the game's own formula gives
+        -- (clamp(RunSpeed * RunSpeedModifier, 0, 75)), exactly like the fake run does, and put the walk speed back when you let go.
+        local repair = false
+        if Stam.FixStuck and running and not fake and not Speed.Enabled and not scOn then
+            local walkV = statNum(stats, "WalkSpeed", 0) * statNum(stats, "SpeedModifier", 1)
+            local ws, rootP, dec = hum.WalkSpeed, hum.RootPart, ch:FindFirstChild("Decoding")
+            local blocked = hum.Health <= 0 or ws <= 0.01 or ch:FindFirstChild("BoxAbilityActive") ~= nil or ch:GetAttribute("TreadmillDazed") == true
+                or ch:GetAttribute("IceSkatingMode") == true or (rootP ~= nil and rootP.Anchored)
+                or (dec ~= nil and dec:IsA("ObjectValue") and dec.Value ~= nil)      -- the states where the game decides your speed itself
+            if not blocked and vanilla - walkV > 0.5 then
+                if fk.fix then
+                    repair = true
+                    if math.abs(ws - (fk.wrote or vanilla)) > 0.75 and math.abs(ws - walkV) > 0.5 then   -- something else now owns your speed (a slow, a stun): let go
+                        fk.fix, repair = false, false
+                    end
+                elseif math.abs(ws - walkV) <= 0.5 then
+                    fk.stuck = fk.stuck or os.clock()
+                    if os.clock() - fk.stuck >= 0.4 then fk.fix, repair = true, true; SP.fixed += 1 end
+                else
+                    fk.stuck = nil
+                end
+            else
+                fk.fix, fk.stuck = false, nil
+            end
+        else
+            fk.fix, fk.stuck = false, nil
         end
-        if fk.was and not fake then
-            -- fake run ended: the server will not resend the walk speed on its own, so put it back
-            if not Speed.Enabled and not sprinting and fk.wrote and math.abs(hum.WalkSpeed - fk.wrote) < 0.01 then
+        local assist = fake or repair                              -- either way we are the one setting your speed right now
+        -- fake running without the speed modifier writes the plain run speed; with it, your adjusted run speed
+        local target = (assist and not Speed.Enabled and not scOn) and vanilla or final
+        if repair and not fake then target = math.clamp(target, 0, 75) end
+        if (Speed.Enabled or assist or scOn) and hum.WalkSpeed > 0.01 and vanilla > 0 then   -- 0 = stunned/frozen, leave it alone
+            hum.WalkSpeed = target
+            if assist then fk.wrote = target end
+        end
+        if fk.was and not assist then
+            -- fake run / repair ended: the server will not resend the walk speed on its own, so put it back
+            -- (after a repair the game's own sprint logic may be the broken part, so there it is put back at once)
+            if not Speed.Enabled and (not sprinting or fk.wasRepair) and fk.wrote and math.abs(hum.WalkSpeed - fk.wrote) < 0.01 then
                 local w = statNum(stats, "WalkSpeed", nil)
                 if w then hum.WalkSpeed = w * statNum(stats, "SpeedModifier", 1) end
             end
             fk.wrote = nil
         end
-        fk.was = fake
+        fk.was, fk.wasRepair = assist, repair
         if SP.scWas and not scOn and not Speed.Enabled and not fake and not sprinting and hum.WalkSpeed > 0.01 then
             hum.WalkSpeed = vanilla                                -- skill check effect ended: the server will not resend the speed
         end
@@ -1499,7 +1545,7 @@ do
         SP.last = { ok = true, running = running, base = base, mod = mod, vanilla = vanilla, final = final, capped = capped,
             floor = floor, floorSrc = src, statsPath = statsPath, humSpeed = hum.WalkSpeed,
             limit = limit, limitSource = limitSource, trust = trust,
-            fake = fake, fatigued = fatigued, stam = sc and sc.Value, stamMax = sm and sm.Value, autoRun = ar.state, autoStop = ar.stopV, autoResume = ar.resumeV }
+            fake = fake, repair = repair, fatigued = fatigued, stam = sc and sc.Value, stamMax = sm and sm.Value, autoRun = ar.state, autoStop = ar.stopV, autoResume = ar.resumeV }
     end
     pcall(function() RunService:UnbindFromRenderStep(RS_NAME) end)
     local warned = false
@@ -1514,12 +1560,14 @@ do
     --   * every part inside a "Walls" folder/model EXCEPT floors, so walls, columns and window frames stop blocking
     --     you but you do not fall through the ground,
     --   * inside Labs' LabsFakeElevator only: DoorHitbox, DoorVisible and the whole ElevatorDoor model.
+    --   * Everything mode (on by default): every anchored part of CurrentRoom except the room's Walls.Floor, anything with a Humanoid above it,
+    --     and what the next line says. A room that has no Walls.Floor keeps its floor-looking parts, so it can never drop you into the void.
     -- Whatever the rule, nothing inside a folder or model named Stairs is ever touched.
     -- Original values are remembered and restored, new parts (new rooms) are caught as they appear, and the game
     -- turning collision back on is undone.
     ------------------------------------------------------------------
     local NC_NAMES = { NoClip = true, NoClip_Collider = true, InvisBlock = true, InvisWall = true, CylinderCollider = true, WallCollider = true, VisualGuard = true }
-    local nc = { on = false, walls = true, extra = {}, parts = {}, boxes = {}, boxCons = {}, conns = {}, gen = 0, accP = 0, accB = 0 }
+    local nc = { on = false, walls = true, all = true, extra = {}, parts = {}, boxes = {}, boxCons = {}, conns = {}, gen = 0, accP = 0, accB = 0, accR = 0 }
     local function ncWanted(name) return NC_NAMES[name] or nc.extra[name] end
     local NC_KEEP = { "floor", "stair", "ramp", "ground" }      -- names (of the part or its folder) that stay solid
     local function ncIsFloor(part)            -- stays solid: named like a floor/stairs, or a THIN horizontal slab
@@ -1545,8 +1593,26 @@ do
         end
         return false
     end
+    -- "Everything" mode: every fixed part of the room you are in, EXCEPT the room's own floor (the Floor folder inside Walls), Stairs and character-like models.
+    local function ncInFloor(part)
+        local a = part:FindFirstAncestor("Floor")
+        while a do
+            if (a:IsA("Folder") or a:IsA("Model")) and a.Parent and a.Parent.Name == "Walls" then return true end
+            a = a.Parent and a.Parent:FindFirstAncestor("Floor")
+        end
+        return false
+    end
+    local function ncInRig(part)             -- part of a model with a Humanoid (Twisteds, toons): never touched
+        local m = part:FindFirstAncestorOfClass("Model")
+        while m do
+            if m:FindFirstChildOfClass("Humanoid") then return true end
+            m = m.Parent and m.Parent:FindFirstAncestorOfClass("Model")
+        end
+        return false
+    end
     local function ncTrack(part)
         if ncInStairs(part) then return end
+        if nc.all and ncInFloor(part) then return end          -- in Everything mode the room's floor always stays solid, whatever rule picked it
         if nc.parts[part] == nil then nc.parts[part] = part.CanCollide end
         if part.CanCollide then part.CanCollide = false end
     end
@@ -1587,6 +1653,37 @@ do
         end
     end
     local function ncInteresting(name) return ncWanted(name) or name == NC_FAKE_ELEVATOR or (nc.walls and name == "Walls") end
+    local function ncRoomHasFloor(room)
+        local w = room:FindFirstChild("Walls")
+        return w ~= nil and w:FindFirstChild("Floor") ~= nil
+    end
+    local function ncEverything(part, hasFloor)   -- should the Everything rule take this part? (a room with no Walls.Floor keeps its floor-looking parts, so you can never fall into the void)
+        if not part.Anchored or ncInRig(part) then return false end
+        if not hasFloor and ncIsFloor(part) then return false end
+        return true
+    end
+    local function ncSweepRooms(gen)              -- every collidable part in every room that the Everything rule takes. Only CurrentRoom: the elevator and the lobby are never touched.
+        local cr = Workspace:FindFirstChild("CurrentRoom")
+        if not cr then return end
+        local n = 0
+        for _, room in ipairs(cr:GetChildren()) do
+            local hasFloor = ncRoomHasFloor(room)
+            for _, d in ipairs(room:GetDescendants()) do
+                if gen and (nc.gen ~= gen or not alive) then return end
+                if d:IsA("BasePart") and d.CanCollide and nc.parts[d] == nil and ncEverything(d, hasFloor) then ncTrack(d) end
+                n += 1
+                if gen and n % 3000 == 0 then task.wait() end
+            end
+        end
+    end
+    local function ncAddEverything(d)             -- a part that appears while Everything mode is on
+        local cr = Workspace:FindFirstChild("CurrentRoom")
+        if not cr or not d:IsDescendantOf(cr) then return end
+        local room = d
+        while room.Parent and room.Parent ~= cr do room = room.Parent end
+        if room.Parent ~= cr then return end
+        if ncEverything(d, ncRoomHasFloor(room)) then ncTrack(d) end
+    end
     local function ncScan(gen)                -- one pass over what already exists, in slices so it never hitches
         local n = 0
         for _, d in ipairs(Workspace:GetDescendants()) do
@@ -1595,16 +1692,19 @@ do
             n += 1
             if n % 4000 == 0 then task.wait() end
         end
+        if nc.all and nc.gen == gen then pcall(ncSweepRooms, gen) end
     end
     local function ncStart()
         nc.gen += 1
         local gen = nc.gen
         nc.conns[1] = Workspace.DescendantAdded:Connect(function(d)
             if ncInteresting(d.Name) then pcall(ncMatch, d) end
+            if nc.all and d:IsA("BasePart") then pcall(ncAddEverything, d) end
         end)
         task.spawn(ncScan, gen)
         nc.conns[2] = RunService.Heartbeat:Connect(function(dt)
-            nc.accP += dt; nc.accB += dt
+            nc.accP += dt; nc.accB += dt; nc.accR += dt
+            if nc.all and nc.accR >= 1.5 then nc.accR = 0; pcall(ncSweepRooms) end        -- parts that turned solid or showed up since (a few milliseconds)
             if nc.accP >= 0.25 then                                  -- keep tracked parts off
                 nc.accP = 0
                 for part in pairs(nc.parts) do
@@ -1647,6 +1747,8 @@ do
         if on then ncStart() else ncStop() end
     end
     function SP.setNoclipWalls(v) v = v and true or false; if v ~= nc.walls then nc.walls = v; ncRestart() end end
+    function SP.setNoclipAll(v) v = v and true or false; if v ~= nc.all then nc.all = v; ncRestart() end end
+    function SP.noclipAll() return nc.all end
     function SP.setNoclipNames(txt)             -- comma separated extra names, exact match
         local set = {}
         for name in tostring(txt or ""):gmatch("[^,]+") do
@@ -5135,6 +5237,8 @@ UI.hints = {
     ["Sync Animation Speed With Stats"] = "Walk, run and extraction animations match your speed. Idle is left alone.",
     ["Ability Animations Follow Speed"] = "Ability animations match your speed while you move, or your decode speed while you extract.",
     ["Fullbright"] = "See everything. Raises the ambient light, removes shadows and fog.",
+    ["Everything Except Floors"] = "Noclip turns off collision for every fixed part of the room, except the floor and any Stairs.",
+    ["Fix Stuck Sprint Speed"] = "After a revive, fixes sprinting that drains stamina but keeps you at walking speed.",
     ["Hide Ichor Splats"] = "Hides the ink that covers your screen when you step in an Ichor puddle.",
     ["Fullbright Brightness"] = "How bright the ambient light is while Fullbright is on.",
     ["Walk Speed (Units Added)/All Floors"] = "Extra walk speed on every floor.",
@@ -5473,7 +5577,7 @@ local function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) 
 
 local function resetESPColors()
     local c, d = Cfg.Categories, DEF.Categories
-    for _, k in ipairs({ "Players", "Twisteds", "Tendrils", "BlotHands", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
+    for _, k in ipairs({ "Players", "Twisteds", "Tendrils", "BlotHands", "RazzleVines", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
     c.Elevator.FakeColor = d.Elevator.FakeColor
     c.StarPillows.OtherColor = d.StarPillows.OtherColor
     c.StarPillows.TwistedColor = d.StarPillows.TwistedColor
@@ -5569,6 +5673,7 @@ local function buildESPPage()
 
     secs[#secs + 1] = { title = "Twisted Sprout's Tendrils", controls = { tg("Enabled", cats.Tendrils, "Enabled"), tg("Fill", cats.Tendrils, "Fill"), cl("Color", cats.Tendrils, "Color", DEF.Categories.Tendrils) } }
     secs[#secs + 1] = { title = "Twisted Blot's Hands", controls = { tg("Enabled", cats.BlotHands, "Enabled"), tg("Fill", cats.BlotHands, "Fill"), cl("Color", cats.BlotHands, "Color", DEF.Categories.BlotHands) } }
+    secs[#secs + 1] = { title = "Twisted Razzle & Dazzle's Vines", controls = { tg("Enabled", cats.RazzleVines, "Enabled"), tg("Fill", cats.RazzleVines, "Fill"), cl("Color", cats.RazzleVines, "Color", DEF.Categories.RazzleVines) } }
     secs[#secs + 1] = { title = "Ichor Puddles", controls = { tg("Enabled", cats.IchorPuddles, "Enabled"), tg("Fill", cats.IchorPuddles, "Fill"), cl("Color", cats.IchorPuddles, "Color", DEF.Categories.IchorPuddles) } }
     return secs
 end
@@ -5596,6 +5701,9 @@ local function buildMovementPage()
             end },
         { t = "toggle", text = "Show Actual Stamina", get = function() return Stam.ShowActual end, set = function(v) Stam.ShowActual = v end },
         { t = "toggle", text = "Show Sprint Icon While Fake Running", get = function() return Stam.Icon end, set = function(v) Stam.Icon = v end },
+        { t = "toggle", text = "Fix Stuck Sprint Speed", get = function() return Stam.FixStuck end, set = function(v) Stam.FixStuck = v end },
+        { t = "readout", text = "Stuck Sprints Fixed", get = function() return tostring(SP.fixed) end },
+        { t = "text", text = "Fix Stuck Sprint Speed is for after you are revived: the game can lose track of your sprint, so the stamina drains while you keep moving at walking speed. If the server says you are sprinting and you hold the key, but your speed has stayed at walking speed for 0.4 seconds, this sets the sprint speed the game would have given you and puts the walking speed back when you let go. It works with Infinite Stamina on or off, and does nothing while the game itself is deciding your speed (machines, ice skating, stuns). The counter shows how many times it had to step in."},
         { t = "text", text = "Infinite Stamina is smoke and mirrors. The server still thinks you're out of stamina and walking, so we set your speed to what a real sprint would give you (your Run adjustments below count if the speed modifier is on) and play the run animation. It kicks in when you try to run while empty. Show Actual Stamina gets rid of the fake full bar if you'd rather know the truth."},
     } }
     secs[#secs + 1] = { title = "Animation Sync", controls = {
@@ -5869,9 +5977,10 @@ end
 local function buildWorldPage()
     return {
         { title = "Noclip", controls = {
-            { t = "text", text = "Noclip changes the map, not you. It turns off collision for everything named NoClip, NoClip_Collider, InvisBlock, InvisWall, CylinderCollider, WallCollider and VisualGuard, and also for the DoorHitbox, the DoorVisible and the whole ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone), and optionally for the parts inside every Walls folder, so walls, columns and window frames stop being a problem. Floors stay solid so you don't fall into the void, and so does everything inside a folder called Stairs, whatever it is named. New rooms are handled automatically, everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
+            { t = "text", text = "Noclip changes the map, not you. With Everything Except Floors on (the default) it turns off collision for every fixed part of the room you are in, so walls, props, machines and doors stop being a problem. It leaves the room's own floor (the Floor folder inside Walls), anything inside a Stairs folder and character-like models such as Twisteds alone, so you never fall, and it never touches the elevator or the lobby. Whatever that setting, anything named NoClip, NoClip_Collider, InvisBlock, InvisWall, CylinderCollider, WallCollider or VisualGuard is turned off too, plus the DoorHitbox, the DoorVisible and the ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone). Everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
             { t = "toggle", text = "Noclip", get = function() return SP.noclipOn() end,
                 set = function(v) SP.setNoclip(v); toast(v and "Noclip on." or "Noclip off, collisions restored.", "info") end },
+            { t = "toggle", text = "Everything Except Floors", get = function() return SP.noclipAll() end, set = function(v) SP.setNoclipAll(v) end },
             { t = "toggle", text = "Include Walls Folders (Keeps Floors)", get = function() return SP.noclipWalls() end,
                 set = function(v) SP.setNoclipWalls(v) end },
             { t = "input", text = "Extra Names (Comma Separated)", placeholder = "e.g. Wall, WindowFrame", get = function() return worldNames end,
@@ -5993,10 +6102,11 @@ local function buildAutomationPage()
 end
 
 Features.world = {
-    serialize = function() return { Walls = SP.noclipWalls(), Names = worldNames, FullbrightLevel = SP.fullbrightLevel() } end,        -- the Noclip and Fullbright switches are saved by the "switches" entry
+    serialize = function() return { Walls = SP.noclipWalls(), NoclipEverything = SP.noclipAll(), Names = worldNames, FullbrightLevel = SP.fullbrightLevel() } end,        -- the Noclip and Fullbright switches are saved by the "switches" entry
     apply = function(data)
         if type(data) ~= "table" then return end
         if type(data.Walls) == "boolean" then SP.setNoclipWalls(data.Walls) end
+        if type(data.NoclipEverything) == "boolean" then SP.setNoclipAll(data.NoclipEverything) end
         if type(data.Names) == "string" then worldNames = data.Names; SP.setNoclipNames(worldNames) end
         if type(data.FullbrightLevel) == "number" then SP.setFullbrightLevel(data.FullbrightLevel) end
     end,
@@ -11143,11 +11253,13 @@ local ESP_GROUPS = {
     ["General"] = { g = "Basics" },
     ["Toons"] = { g = "Players" },
     ["Twisteds"] = { g = "Twisteds" },
-    ["Machines"] = { g = "Objects" }, ["Twisted Gigi's Stash"] = { g = "Objects" }, ["Star Pillows"] = { g = "Objects" },
+    ["Machines"] = { g = "Objects" }, ["Twisted Gigi's Stash"] = { g = "Objects", r = "Gigi's Stash" }, ["Star Pillows"] = { g = "Objects" },
     ["Bookshelves"] = { g = "Objects" }, ["Trick or Treat Doors"] = { g = "Objects" }, ["Elevator"] = { g = "Objects" },
     ["Items"] = { g = "Items" }, ["Item Colors"] = { g = "Items" },
     ["Twisted Sprout's Tendrils"] = { g = "Hazards", r = "Sprout's Tendrils" },   -- the full name is 25 characters, too wide for the rail in most skins
-    ["Twisted Blot's Hands"] = { g = "Hazards", r = "Blot's Hands" }, ["Ichor Puddles"] = { g = "Hazards" },
+    ["Twisted Blot's Hands"] = { g = "Hazards", r = "Blot's Hands" },
+    ["Twisted Razzle & Dazzle's Vines"] = { g = "Hazards", r = "Razzle's Vines" },   -- the full name is 156px wide in some skins, the rail text area is 148px
+    ["Ichor Puddles"] = { g = "Hazards" },
 }
 local SKILL_GROUPS = {
     ["More Skill Checks"] = { g = "Basics", t = "Main" }, ["Live Values"] = { g = "Basics" },
