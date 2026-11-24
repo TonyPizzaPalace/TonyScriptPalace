@@ -1072,7 +1072,7 @@ do
         local l = (#sets[variant] > 0) and sets[variant] or sets.base
         return l[1] and l[math.random(#l)] or nil
     end
-    local function runAnim(ch, hum, play)
+    local function runAnim(ch, hum, play, sprinting)
         local animator = hum:FindFirstChildOfClass("Animator")
         local moving = false
         if play and animator then
@@ -1080,7 +1080,7 @@ do
             local v = root and root.AssemblyLinearVelocity
             moving = hum.MoveDirection.Magnitude > 0.01 and v ~= nil and Vector3.new(v.X, 0, v.Z).Magnitude > 0.5
         end
-        if not moving then stopRun(); return end
+        if not moving then stopRun(); an.fakeSince, an.lastSprint, an.reapply, an.reapply2 = nil, nil, nil, nil; return end
         local variant = ch:GetAttribute("Transformed") and "transform" or "base"
         if an.ch ~= ch or an.variant ~= variant or not an.track then
             stopRun(); an.track = nil
@@ -1088,12 +1088,28 @@ do
             if not src then return end
             local ok, tr = pcall(animator.LoadAnimation, animator, src)
             if not ok or not tr then return end
-            tr.Priority = Enum.AnimationPriority.Action   -- above the walk track the game keeps playing
+            tr.Priority = Enum.AnimationPriority.Action4   -- above the walk track the game keeps playing (on your screen AND on everyone else's)
             tr.Looped = true
             an.track, an.ch, an.variant = tr, ch, variant
+            an.fakeSince = nil
         end
         local tr = an.track
-        if not tr.IsPlaying then tr:Play(0.2) end
+        local now = os.clock()
+        -- Other players only see this track if it is (re)started AFTER the server has swapped your Run for Walk, which happens
+        -- when stamina hits 0 while you hold sprint. So when the fake run starts, and whenever the server's Sprinting flips
+        -- while it is on, replay the track shortly afterwards (plus one safety replay a bit later) so it replicates to everyone.
+        if not an.fakeSince then an.fakeSince = now; an.reapply = now + 0.3; an.reapply2 = now + 1.0 end
+        if an.lastSprint ~= sprinting then
+            if an.lastSprint ~= nil then an.reapply = now + 0.25 end
+            an.lastSprint = sprinting
+        end
+        if not tr.IsPlaying then
+            tr:Play(0.2)
+        elseif an.reapply and now >= an.reapply then
+            an.reapply, an.reapply2 = an.reapply2, nil
+            local tp = tr.TimePosition
+            tr:Stop(0); tr:Play(0.1); tr.TimePosition = tp
+        end
         local runA = ch.Animations:FindFirstChild("Run")
         local ov = runA and runA:FindFirstChild("RunOverride")
         local sp = (ov and (ov:IsA("NumberValue") or ov:IsA("IntValue"))) and ov.Value or 1
@@ -1465,6 +1481,45 @@ do
         end
         final = math.max(final, 0)
         if not Speed.Enabled then final = scSpeed end           -- speed modifier off: the game's speed plus the skill check effects only
+        -- Treadmill extraction (Animation Sync): the machine leaves you at 0 speed, so write your plain game speed (WalkSpeed x SpeedModifier,
+        -- or the run version while you run) and pause every script bonus (speed modifier, skill check rewards) until you stop extracting.
+        local onTm, tmSpeed, machRun = false, nil, false
+        if Speed.Anim.On then
+            local dec = ch:FindFirstChild("Decoding")
+            local onMachine = dec ~= nil and dec:IsA("ObjectValue") and dec.Value ~= nil     -- extracting on ANY machine
+            local walkV = statNum(stats, "WalkSpeed", 0) * statNum(stats, "SpeedModifier", 1)
+            local runV = statNum(stats, "RunSpeed", 0) * statNum(stats, "RunSpeedModifier", 1)
+            if not onMachine then
+                if walkV > 0.01 then SP.walkV = walkV end          -- remember your real speeds from before the machine zeroes things
+                if runV > 0.01 then SP.runV = runV end
+            elseif ch:GetAttribute("TreadmillDazed") ~= true then
+                onTm = true
+                -- are you running? the stats can lag behind on a machine, so also ask the game's sprint controller and look for a playing Run animation
+                machRun = running and not dazed
+                if not machRun and not dazed then
+                    local okC, c = pcall(clientSprinting, stats)
+                    machRun = okC and c == true
+                end
+                if not machRun and not dazed then
+                    local an2 = hum:FindFirstChildOfClass("Animator")
+                    if an2 then
+                        for _, tr in ipairs(an2:GetPlayingAnimationTracks()) do
+                            if tr.WeightCurrent > 0.5 and animKind(ch, tr) == "Run" then machRun = true; break end
+                        end
+                    end
+                end
+                if machRun then
+                    tmSpeed = runV
+                    if tmSpeed <= 0.01 then tmSpeed = SP.runV end
+                end
+                if not tmSpeed or tmSpeed <= 0.01 then
+                    tmSpeed = walkV
+                    if tmSpeed <= 0.01 then tmSpeed = SP.walkV end     -- the machine zeroed the stats too: use the remembered speed
+                    machRun = false
+                end
+            end
+        end
+        if onTm then final = tmSpeed or 0; running = machRun end     -- animation sync below follows the state you are really in
         -- limits: a manual cap, and/or a limit learned after the anti-cheat flagged you at a higher speed
         local state = running and "Run" or "Walk"
         local limit, limitSource = nil, nil
@@ -1480,7 +1535,7 @@ do
             end
         end
         local capped = false
-        if limit and final > limit then final = math.max(limit, 0); capped = true end
+        if limit and not onTm and final > limit then final = math.max(limit, 0); capped = true end
         -- remember the highest boosted speed of the last few seconds (used when a flag happens)
         local pk = SP.peak[state]
         if not pk or os.clock() - pk.t > 3 or final > pk.v then SP.peak[state] = { v = final, t = os.clock(), vanilla = vanilla } end
@@ -1493,7 +1548,9 @@ do
         local assist = fake                              -- we are the one setting your speed when fake running
         -- fake running without the speed modifier writes the plain run speed; with it, your adjusted run speed
         local target = (assist and not Speed.Enabled and not scOn) and vanilla or final
-        if (Speed.Enabled or assist or scOn) and hum.WalkSpeed > 0.01 and vanilla > 0 then   -- 0 = stunned/frozen, leave it alone
+        if onTm then
+            if tmSpeed and tmSpeed > 0.01 then hum.WalkSpeed = tmSpeed end   -- on the machine the game holds you at 0: undo that, without any script bonus
+        elseif (Speed.Enabled or assist or scOn) and hum.WalkSpeed > 0.01 and vanilla > 0 then   -- 0 = stunned/frozen, leave it alone
             hum.WalkSpeed = target
             if assist then fk.wrote = target end
         end
@@ -1512,7 +1569,7 @@ do
         SP.scWas = scOn and not Speed.Enabled
         pcall(animSync, ch, hum, stats, running)
         pcall(function()
-            runAnim(ch, hum, fake)
+            runAnim(ch, hum, fake, sprinting)
             setIcon(fake and Stam.Icon, sprinting)
             if Stam.Infinite and not Stam.ShowActual then barFake(stats) else barRestore() end
             autoRun(ch, stats)
@@ -1525,7 +1582,7 @@ do
         SP.last = { ok = true, running = running, base = base, mod = mod, vanilla = vanilla, final = final, capped = capped,
             floor = floor, floorSrc = src, statsPath = statsPath, humSpeed = hum.WalkSpeed,
             limit = limit, limitSource = limitSource, trust = trust,
-            fake = fake, fatigued = fatigued, stam = sc and sc.Value, stamMax = sm and sm.Value, autoRun = ar.state, autoStop = ar.stopV, autoResume = ar.resumeV }
+            fake = fake, fatigued = fatigued, treadmill = onTm, stam = sc and sc.Value, stamMax = sm and sm.Value, autoRun = ar.state, autoStop = ar.stopV, autoResume = ar.resumeV }
     end
     pcall(function() RunService:UnbindFromRenderStep(RS_NAME) end)
     local warned = false
@@ -1547,7 +1604,7 @@ do
     -- turning collision back on is undone.
     ------------------------------------------------------------------
     local NC_NAMES = { NoClip = true, NoClip_Collider = true, InvisBlock = true, InvisWall = true, CylinderCollider = true, WallCollider = true, VisualGuard = true }
-    local nc = { on = false, walls = true, all = true, extra = {}, parts = {}, boxes = {}, boxCons = {}, conns = {}, gen = 0, accP = 0, accB = 0, accR = 0, sweeping = false }
+    local nc = { on = false, walls = true, all = true, smart = true, keep = {}, accK = 0, extra = {}, parts = {}, boxes = {}, boxCons = {}, conns = {}, gen = 0, accP = 0, accB = 0, accR = 0, sweeping = false }
     local function ncWanted(name) return NC_NAMES[name] or nc.extra[name] end
     local NC_KEEP = { "floor", "stair", "ramp", "ground" }      -- names (of the part or its folder) that stay solid
     local function ncIsFloor(part)            -- stays solid: named like a floor/stairs, or a THIN horizontal slab
@@ -1593,7 +1650,7 @@ do
         return false
     end
     local function ncTrack(part)
-        if ncInStairs(part) then return end
+        if ncInStairs(part) or nc.keep[part] then return end
         if nc.all and ncInFloor(part) then return end          -- in Everything mode floors always stay solid, whatever rule picked them
         if nc.parts[part] == nil then nc.parts[part] = part.CanCollide end
         if part.CanCollide then part.CanCollide = false end
@@ -1664,6 +1721,65 @@ do
         end
         if nc.all and nc.gen == gen then pcall(ncSweepAll, gen) end
     end
+    -- SMART FLOORS: whatever has a flat top level with your feet stays solid (found from where you stand, so it follows you
+    -- between levels and does not care what the parts are named). Everything else follows the normal rules.
+    local NC_BAND_DOWN, NC_BAND_UP = 1.5, 1.0     -- how far below / above your floor level a top surface still counts as floor
+    local NC_RADIUS, NC_RAY = 90, 25
+    local function ncFloorLevel(ch, hrp)          -- Y of the solid surface under you (CanCollide respected), skipping characters
+        local ignore = { ch }
+        local rp = RaycastParams.new()
+        rp.FilterType = Enum.RaycastFilterType.Exclude
+        rp.RespectCanCollide = true
+        for _ = 1, 4 do
+            rp.FilterDescendantsInstances = ignore
+            local hit = Workspace:Raycast(hrp.Position, Vector3.new(0, -NC_RAY, 0), rp)
+            if not hit then return nil end
+            if ncInRig(hit.Instance) then ignore[#ignore + 1] = hit.Instance      -- stood over a Twisted/player: look under it
+            else return hit.Position.Y end
+        end
+        return nil
+    end
+    local function ncTopY(part)                   -- Y of the part's flat top, or nil when it is tilted (ramps, slanted walls)
+        local cf, sz = part.CFrame, part.Size
+        local r, u, l = cf.RightVector, cf.UpVector, cf.LookVector
+        if math.max(math.abs(r.Y), math.abs(u.Y), math.abs(l.Y)) < 0.97 then return nil end
+        local h = math.abs(r.Y) * sz.X + math.abs(u.Y) * sz.Y + math.abs(l.Y) * sz.Z
+        return cf.Position.Y + h / 2
+    end
+    local function ncNameKeep(part)
+        local n, pn = part.Name:lower(), part.Parent and part.Parent.Name:lower() or ""
+        for _, k in ipairs(NC_KEEP) do
+            if n:find(k, 1, true) or pn:find(k, 1, true) then return true end
+        end
+        return false
+    end
+    local function ncUpdateKeep()
+        local ch = LP.Character
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local level = ncFloorLevel(ch, hrp)
+        if not level then return end                      -- nothing under you right now: keep the previous floor set
+        local op = OverlapParams.new()
+        op.FilterType = Enum.RaycastFilterType.Exclude
+        op.FilterDescendantsInstances = { ch }
+        local new = {}
+        for _, p in ipairs(Workspace:GetPartBoundsInBox(CFrame.new(hrp.Position), Vector3.new(NC_RADIUS * 2, 80, NC_RADIUS * 2), op)) do
+            if p:IsA("BasePart") and (p.CanCollide or nc.parts[p] ~= nil) and ncEverything(p) and not ncInStairs(p) then
+                local top = ncTopY(p)
+                if ncNameKeep(p) or (top and top >= level - NC_BAND_DOWN and top <= level + NC_BAND_UP) then new[p] = true end
+            end
+        end
+        for p in pairs(nc.keep) do                         -- left the floor band: back to noclip
+            if not new[p] then nc.keep[p] = nil; if p.Parent then pcall(ncTrack, p) end end
+        end
+        for p in pairs(new) do                             -- entered the floor band: make solid again if we had switched it off
+            if not nc.keep[p] then
+                nc.keep[p] = true
+                local was = nc.parts[p]
+                if was ~= nil then nc.parts[p] = nil; pcall(function() p.CanCollide = was end) end
+            end
+        end
+    end
     local function ncStart()
         nc.gen += 1
         local gen = nc.gen
@@ -1671,9 +1787,11 @@ do
             if ncInteresting(d.Name) then pcall(ncMatch, d) end
             if nc.all and d:IsA("BasePart") then pcall(ncAddEverything, d) end
         end)
+        if nc.smart and nc.all then pcall(ncUpdateKeep) end        -- floors first, so nothing is switched off under your feet
         task.spawn(ncScan, gen)
         nc.conns[2] = RunService.Heartbeat:Connect(function(dt)
-            nc.accP += dt; nc.accB += dt; nc.accR += dt
+            nc.accP += dt; nc.accB += dt; nc.accR += dt; nc.accK += dt
+            if nc.smart and nc.all and nc.accK >= 0.15 then nc.accK = 0; pcall(ncUpdateKeep) end
             if nc.all and nc.accR >= 1.5 and not nc.sweeping then       -- parts that turned solid or showed up since; sliced over several frames so it never hitches
                 nc.accR, nc.sweeping = 0, true
                 local g = nc.gen
@@ -1683,7 +1801,7 @@ do
                 nc.accP = 0
                 for part in pairs(nc.parts) do
                     if part.Parent == nil then nc.parts[part] = nil
-                    elseif part.CanCollide then part.CanCollide = false end
+                    elseif part.CanCollide and not nc.keep[part] then part.CanCollide = false end
                 end
             end
             if nc.accB >= 5 then                                     -- slow safety net (new parts are mostly caught by box.DescendantAdded)
@@ -1711,7 +1829,7 @@ do
         for part, was in pairs(nc.parts) do
             if part.Parent then pcall(function() part.CanCollide = was end) end
         end
-        table.clear(nc.parts); table.clear(nc.boxes)
+        table.clear(nc.parts); table.clear(nc.boxes); table.clear(nc.keep)
     end
     local function ncRestart() if nc.on then ncStop(); ncStart() end end
     function SP.setNoclip(on)
@@ -1723,6 +1841,8 @@ do
     function SP.setNoclipWalls(v) v = v and true or false; if v ~= nc.walls then nc.walls = v; ncRestart() end end
     function SP.setNoclipAll(v) v = v and true or false; if v ~= nc.all then nc.all = v; ncRestart() end end
     function SP.noclipAll() return nc.all end
+    function SP.setNoclipSmart(v) v = v and true or false; if v ~= nc.smart then nc.smart = v; ncRestart() end end
+    function SP.noclipSmart() return nc.smart end
     function SP.setNoclipNames(txt)             -- comma separated extra names, exact match
         local set = {}
         for name in tostring(txt or ""):gmatch("[^,]+") do
@@ -2063,6 +2183,7 @@ do
     function SP.risk()
         local l = SP.last
         if not (l and l.ok) then return "info", "Waiting for your character and Stats folder..." end
+        if l.treadmill then return "info", "Extracting on a machine: your speed is the game's normal speed and the script's speed bonuses are paused until you finish." end
         if not Speed.Enabled and not SP.scOn then return "info", "The speed modifier is off, so the game controls your speed." end
         if l.capped then
             return "warn", string.format("Capped at %.1f (%s). The game's normal speed right now is %.1f.", l.limit, l.limitSource, l.vanilla)
@@ -5677,7 +5798,7 @@ local function buildMovementPage()
         { t = "text", text = "Infinite Stamina is smoke and mirrors. The server still thinks you're out of stamina and walking, so we set your speed to what a real sprint would give you (your Run adjustments below count if the speed modifier is on) and play the run animation. It kicks in when you try to run while empty. Show Actual Stamina gets rid of the fake full bar if you'd rather know the truth."},
     } }
     secs[#secs + 1] = { title = "Animation Sync", controls = {
-        { t = "text", text = "Makes your animations match your speed. Walk and run animations play faster or slower depending on how your humanoid speed compares to your toon's own walk and run speed (from its TowerData module), and exactly that speed means normal. The extraction animation follows your DecodeSpeedModifier, and ability animations follow your speed while you move or your decode speed while you extract. Idle is never touched. Visual only, and only on your screen." },
+        { t = "text", text = "Makes your animations match your speed. Walk and run animations play faster or slower depending on how your humanoid speed compares to your toon's own walk and run speed (from its TowerData module), and exactly that speed means normal. The extraction animation follows your DecodeSpeedModifier, and ability animations follow your speed while you move or your decode speed while you extract. While you extract on a machine your speed is set to your normal walk speed (WalkSpeed x SpeedModifier; the run version if you run on a treadmill) instead of 0, and the speed modifier and skill check bonuses pause until you stop, so the animations stay in sync. Idle is never touched. Visual only, and only on your screen." },
         { t = "toggle", text = "Sync Animation Speed With Stats", get = function() return Speed.Anim.On end,
             set = function(v) Speed.Anim.On = v; if not v then SP.animRestore() end end },
         { t = "toggle", text = "Ability Animations Follow Speed", get = function() return Speed.Anim.Ability end,
@@ -5687,6 +5808,16 @@ local function buildMovementPage()
     secs[#secs + 1] = { title = "Speed", controls = {
         { t = "text", text = "Speeding in Dandy's World is not a victimless crime.\n\n   \"Sir, do you know how fast you were walking?\"\n   \"Fast enough to lagback, officer.\"\n\nGo too fast and the anti-cheat yanks you back to where you were. It's not a ban, just the game telling you to chill. The Speed Trust score below drops every time you get flagged, so if it's dropping, ease off."},
         { t = "livetext", get = function() return SP.risk() end },
+        { t = "toggle", text = "Enable Speed Modifier", get = function() return Speed.Enabled end,
+            set = function(v)
+                Speed.Enabled = v
+                if v then
+                    task.delay(0.3, function()
+                        local level, txt = SP.risk()
+                        if level == "warn" or level == "bad" then toast(txt, "ng") end
+                    end)
+                end
+            end },
         { t = "readout", text = "Humanoid Speed", get = function() return L(function(l) return num(l.humSpeed) end) end },
         { t = "readout", text = "State", get = function() return L(function(l) return l.running and "Running" or "Walking" end) end },
         { t = "readout", text = "Game Speed (Normal)", get = function() return L(function(l) return num(l.vanilla) end) end },
@@ -5698,16 +5829,6 @@ local function buildMovementPage()
         { t = "readout", text = "Speed Trust Score", get = function()
             return L(function(l) return l.trust ~= nil and tostring(l.trust) or "-" end)
         end },
-        { t = "toggle", text = "Enable Speed Modifier", get = function() return Speed.Enabled end,
-            set = function(v)
-                Speed.Enabled = v
-                if v then
-                    task.delay(0.3, function()
-                        local level, txt = SP.risk()
-                        if level == "warn" or level == "bad" then toast(txt, "ng") end
-                    end)
-                end
-            end },
         { t = "dropdown", text = "Mode", get = function() return Speed.Mode end,
             options = function() return { "Additive", "Multiplicative" } end,
             set = function(o) Speed.Mode = o; refreshPage() end },
@@ -5947,10 +6068,11 @@ end
 local function buildWorldPage()
     return {
         { title = "Noclip", controls = {
-            { t = "text", text = "Noclip changes the map, not you. With Everything Except Floors on (the default) it turns off collision for every fixed part in the game, not only the room you are in (the elevator too), so walls, props, machines and doors stop being a problem. It leaves alone anything named Floor or FloorIchor (a part, or everything inside a Floor folder), everything inside a Stairs folder, the Baseplate far below the map that catches you if you fall, and every character (you, other players and Twisteds), so you never fall and your character is never touched. Whatever that setting, anything named NoClip, NoClip_Collider, InvisBlock, InvisWall, CylinderCollider, WallCollider or VisualGuard is turned off too, plus the DoorHitbox, the DoorVisible and the ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone). Everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
+            { t = "text", text = "Noclip changes the map, not you. With Everything Except Floors on (the default) it turns off collision for every fixed part in the game, not only the room you are in (the elevator too), so walls, props, machines and doors stop being a problem. It leaves alone anything named Floor or FloorIchor (a part, or everything inside a Floor folder), everything inside a Stairs folder, the Baseplate far below the map that catches you if you fall, and every character (you, other players and Twisteds), so you never fall and your character is never touched. Whatever that setting, anything named NoClip, NoClip_Collider, InvisBlock, InvisWall, CylinderCollider, WallCollider or VisualGuard is turned off too, plus the DoorHitbox, the DoorVisible and the ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone). Smart Floors (needs Everything Except Floors) also keeps solid any part with a flat top level with your feet, even one that is only named Part; it finds them from where you stand, so it follows you between levels. Everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
             { t = "toggle", text = "Noclip", get = function() return SP.noclipOn() end,
                 set = function(v) SP.setNoclip(v); toast(v and "Noclip on." or "Noclip off, collisions restored.", "info") end },
             { t = "toggle", text = "Everything Except Floors", get = function() return SP.noclipAll() end, set = function(v) SP.setNoclipAll(v) end },
+            { t = "toggle", text = "Smart Floors (Keep Whatever Is At Your Feet)", get = function() return SP.noclipSmart() end, set = function(v) SP.setNoclipSmart(v) end },
             { t = "toggle", text = "Include Walls Folders (Keeps Floors)", get = function() return SP.noclipWalls() end,
                 set = function(v) SP.setNoclipWalls(v) end },
             { t = "input", text = "Extra Names (Comma Separated)", placeholder = "e.g. Wall, WindowFrame", get = function() return worldNames end,
