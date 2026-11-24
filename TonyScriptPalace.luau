@@ -74,7 +74,7 @@ local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
 local RAINBOW = "Rainbow"
 -- animated "colors": Rainbow cycles every hue, Halloween swaps orange and purple, Christmas swaps red and green
 local COLOR_MODES = { Rainbow = true, Halloween = true, Christmas = true }
-local MODE_PAIRS = { Halloween = { Color3.fromRGB(255, 140, 0), Color3.fromRGB(160, 32, 240) }, Christmas = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 200, 0) } }
+local MODE_PAIRS = { Halloween = { Color3.fromRGB(255, 128, 0), Color3.fromRGB(128, 0, 255) }, Christmas = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 255, 0) } }
 
 local function hexOf(c)
     return string.format("#%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
@@ -228,20 +228,20 @@ local rainbowSet = {}                                   -- [Highlight] = mode na
 local rainbowSw = setmetatable({}, { __mode = "k" })    -- [swatch Frame] = mode name
 
 local ITEM_GROUPS = {
-    { C(255, 140, 0),   { "Stopwatch", "SkillCheckCandy" } },
+    { C(255, 128, 0),   { "Stopwatch", "SkillCheckCandy" } },
     { "Halloween",      { "Pumpkin", "DandyCorn" } },                 -- orange and purple
     { "Christmas",      { "ChristmasCookie", "Ornament" } },          -- red and green
     { C(255, 255, 255), { "Tape", "ResearchCapsule" } },
-    { C(255, 105, 180), { "Gumball", "Jawbreaker" } },        -- the game calls them "Gumball" internally (shown as "Gumballs")
-    { C(170, 255, 0),   { "Chocolate", "ChocolateBox" } },
+    { C(255, 128, 192), { "Gumball", "Jawbreaker" } },        -- the game calls them "Gumball" internally (shown as "Gumballs")
+    { C(192, 255, 0),   { "Chocolate", "ChocolateBox" } },
     { C(0, 255, 0),     { "StaminaCandy", "Pop", "ProteinBar", "PopBottle" } },
-    { C(160, 32, 240),  { "Instructions", "ExtractionSpeedCandy", "JumperCable", "Valve", "GlitterGlue" } },
+    { C(128, 0, 255),  { "Instructions", "ExtractionSpeedCandy", "JumperCable", "Valve", "GlitterGlue" } },
     { C(255, 0, 0),     { "AirHorn", "AlarmClock" } },
-    { C(150, 90, 40),   { "BonBon" } },
+    { C(160, 96, 64),   { "BonBon" } },
     { C(255, 255, 0),   { "DandyEasterEggs", "SpeedCandy", "BallOfWax" } },
     { RAINBOW,          { "Bandage", "HealthKit", "ExtraHeart" } },
-    { C(0, 200, 120),   { "EjectButton" } },
-    { C(0, 120, 255),   { "StealthCandy", "SmokeBomb", "Cobweb" } },
+    { C(0, 255, 128),   { "EjectButton" } },
+    { C(0, 0, 255),   { "StealthCandy", "SmokeBomb", "Cobweb" } },
 }
 
 local Cfg = {
@@ -255,16 +255,18 @@ local Cfg = {
         Elevator   = { Enabled = true, Fill = true, Color = C(0, 255, 0), Fake = true, FakeColor = C(255, 0, 0) },   -- the real elevator's ElevatorDoor, and optionally the fake elevators' doors
         RazzleVines = { Enabled = true, Fill = true, Color = C(255, 0, 0) },     -- Twisted Razzle & Dazzle's vines (the RazzleVine MeshParts in the room's FreeArea)
         BlotHands  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Blot's hands (the Arm in each BlotHand_R / BlotHand_L)
-        IchorPuddles = { Enabled = true, Fill = true, Color = C(255, 0, 0) },   -- everything in the room's Puddles folder except Twisted Barnaby
+        IchorPuddles = { Enabled = true, Fill = true, Color = C(255, 0, 0), Tops = true, FinnDiff = false, FinnColor = C(0, 128, 255) },   -- everything in the room's Puddles folder except Twisted Barnaby. Tops = the Ichor_Puddle_Top models; FinnDiff/FinnColor = FinnIchorPuddle in its own color
         Generators = { Enabled = true, Fill = true, HideCompleted = false, Brusha = true, DuoOne = true, Colors = {
-            Incomplete = C(255, 0, 0), InProgress = C(255, 255, 0), Completed = C(0, 255, 0), Connie = C(0, 255, 255), Brusha = C(170, 0, 255),
-            DuoOne = C(255, 165, 0),      -- duo machine with only one player working on it
+            Incomplete = C(255, 0, 0), InProgress = C(255, 255, 0), Completed = C(0, 255, 0), Connie = C(0, 255, 255), Brusha = C(128, 0, 255),
+            DuoOne = C(255, 128, 0),      -- duo machine with only one player working on it
         } },
-        Doors      = { Enabled = true, Fill = true, Color = C(255, 140, 0), HideUsed = false },
-        StarPillows = { Enabled = true, Fill = true, Mode = "All", Color = C(0, 0, 255), OtherDiff = false, OtherColor = C(239, 0, 244),
+        Doors      = { Enabled = true, Fill = true, Color = C(255, 128, 0), HideUsed = false },
+        StarPillows = { Enabled = true, Fill = true, Mode = "All", Color = C(0, 0, 255), OtherDiff = false, OtherColor = C(255, 0, 255),
             ShowTwisted = true, TwistedColor = C(255, 0, 0) },
-        Bookshelves = { Enabled = false, Fill = true, Color = C(160, 32, 240), Patterns = { "bookshel", "bookcase" } },
-        Items      = { Enabled = true, Fill = true, PerItem = true, Color = C(255, 255, 255), Fallback = C(255, 255, 255), Colors = {}, Hidden = {} },
+        Bookshelves = { Enabled = false, Fill = true, Color = C(128, 0, 255), Patterns = { "bookshel", "bookcase" } },
+        Items      = { Enabled = true, Fill = true, PerItem = true, Color = C(255, 255, 255), Fallback = C(255, 255, 255), Colors = {}, Hidden = {},
+            Shop = false, ShopMode = "Normal", ShopColor = C(255, 215, 0), ShopAffordColor = C(0, 255, 0), ShopNoAffordColor = C(255, 0, 0), ShopAffordNormal = false, ShopAffordOnly = false },
+            -- Shop = also the items for sale in the elevator's shop. ShopMode: "Normal" (like the same item in a room), "Custom" (one color, ShopColor), "Tapes" (by Cost against your SurvivalPoints)
     },
 }
 local KNOWN_ITEMS = {}
@@ -496,7 +498,14 @@ do
                     if c.Name == "TBarnaby_v3" then
                         if cats.Twisteds.Enabled then add(c, cats.Twisteds.Color, "Twisteds") end
                     elseif cats.IchorPuddles.Enabled then
-                        add(c, cats.IchorPuddles.Color, "IchorPuddles")
+                        local ip = cats.IchorPuddles
+                        if c.Name:find("^Ichor_Puddle_Top") then
+                            if ip.Tops then add(c, ip.Color, "IchorPuddles") end        -- the raised tops of the puddles
+                        elseif c.Name:find("^FinnIchorPuddle") then
+                            add(c, ip.FinnDiff and ip.FinnColor or ip.Color, "IchorPuddles")   -- Finn's own puddle, optionally in its own color
+                        else
+                            add(c, ip.Color, "IchorPuddles")
+                        end
                     end
                 end
             end
@@ -545,6 +554,58 @@ do
                             local col
                             if it.PerItem then col = it.Colors[i.Name] or it.Fallback else col = it.Color end
                             add(i, col, "Items")
+                        end
+                    end
+                end
+            end
+        end
+
+        if cats.Items.Enabled and cats.Items.Shop then
+            -- the shop is part of the elevator, not of a room: Workspace.Elevators.<elevator>.Otherside.Shop. The item for sale is the model inside
+            -- each of its Slot1 / Slot2 / Slot3 MeshParts, and it carries its price in a NumberValue named Cost. Your tapes are the SurvivalPoints
+            -- NumberValue in Workspace.Info.PlayerStats.<your name>. Hidden items stay hidden here too.
+            local it = cats.Items
+            local mode = it.ShopMode
+            local tapes
+            if mode == "Tapes" then
+                local info = Workspace:FindFirstChild("Info")
+                local ps = info and info:FindFirstChild("PlayerStats")
+                local me = ps and (ps:FindFirstChild(LP.Name) or ps:FindFirstChild(LP.DisplayName))
+                local sv = me and me:FindFirstChild("SurvivalPoints")
+                tapes = sv and sv:IsA("ValueBase") and tonumber(sv.Value) or nil
+            end
+            local els = Workspace:FindFirstChild("Elevators")
+            if els then
+                for _, e in ipairs(els:GetChildren()) do
+                    local side = e:FindFirstChild("Otherside")
+                    local shop = side and side:FindFirstChild("Shop")
+                    if shop then
+                        for _, slot in ipairs(shop:GetChildren()) do
+                            if slot.Name:find("^Slot%d") then
+                                for _, i in ipairs(slot:GetChildren()) do
+                                    if (i:IsA("Model") or i:IsA("BasePart")) and not it.Hidden[i.Name] then
+                                        local normal
+                                        if it.PerItem then normal = it.Colors[i.Name] or it.Fallback else normal = it.Color end
+                                        local col = normal
+                                        if mode == "Custom" then
+                                            col = it.ShopColor
+                                        elseif mode == "Tapes" then
+                                            local cv = i:FindFirstChild("Cost")
+                                            local cost = cv and cv:IsA("ValueBase") and tonumber(cv.Value) or nil
+                                            if tapes and cost then                -- if either is unreadable the item just keeps its normal color
+                                                if tapes >= cost then
+                                                    col = it.ShopAffordNormal and normal or it.ShopAffordColor
+                                                elseif it.ShopAffordOnly then
+                                                    col = nil
+                                                else
+                                                    col = it.ShopNoAffordColor
+                                                end
+                                            end
+                                        end
+                                        add(i, col, "Items")
+                                    end
+                                end
+                            end
                         end
                     end
                 end
@@ -2120,7 +2181,65 @@ do
     function SP.hideIchorOn() return ich.on end
     function SP.setHideIchor(v) ich.on = v and true or false end
 
+    ------------------------------------------------------------------
+    -- ADBLOCKER (Screen tab). Twisted Vee's chase ability fires the PopUpEvent remote at you; the game's own handler
+    -- (EventHandlersController) answers by cloning a fake-ad popup onto your screen and playing a sound. While this is on, that handler's
+    -- connection is switched off, so the popup is never made at all (no popup, no sound). Turning it off switches the handler back on.
+    -- Only the popup is blocked: the slowness Vee's ability gives you is applied by the server and stays. Without getconnections it falls
+    -- back to destroying each popup the moment it appears (the sound can still play then).
+    ------------------------------------------------------------------
+    local adb = { on = false, off = {}, nextScan = 0, tagConn = nil }
+    local function adbClear()                       -- close any popup that is already on screen
+        local CS = game:GetService("CollectionService")
+        for _, p in ipairs(CS:GetTagged("PopUp")) do
+            if p.Name == "TemporaryPopUp" then pcall(p.Destroy, p) end
+        end
+    end
+    local function adbScan()                        -- switch off every live handler of PopUpEvent (a rebuilt GUI makes a new one)
+        local evs = ReplicatedStorage:FindFirstChild("Events")
+        local ev = evs and evs:FindFirstChild("PopUpEvent")
+        if not (ev and getconnections) then return end
+        local ok, list = pcall(getconnections, ev.OnClientEvent)
+        if not (ok and type(list) == "table") then return end
+        for _, c in ipairs(list) do
+            local enabled = true
+            pcall(function() enabled = c.Enabled ~= false end)
+            if enabled and pcall(function() c:Disable() end) then adb.off[#adb.off + 1] = c end
+        end
+    end
+    local function adbRelease()
+        for _, c in ipairs(adb.off) do pcall(function() c:Enable() end) end
+        adb.off = {}
+        if adb.tagConn then adb.tagConn:Disconnect(); adb.tagConn = nil end
+    end
+    local function adbStep()
+        if not adb.on then return end
+        local now = os.clock()
+        if now < adb.nextScan then return end
+        adb.nextScan = now + 0.5
+        adbScan()
+    end
+    connect(RunService.Heartbeat, function() pcall(adbStep) end)
+    function SP.adblockOn() return adb.on end
+    function SP.adblockWorks() return getconnections ~= nil end
+    function SP.setAdblock(v)
+        v = v and true or false
+        if v == adb.on then return end
+        adb.on = v
+        if not v then adbRelease(); return end
+        adb.nextScan = 0
+        pcall(adbScan)
+        if not getconnections then
+            local CS = game:GetService("CollectionService")
+            adb.tagConn = CS:GetInstanceAddedSignal("PopUp"):Connect(function(p)
+                if adb.on then pcall(p.Destroy, p) end
+            end)
+        end
+        pcall(adbClear)
+    end
+
     function SP.Unload()
+        pcall(adbRelease)
         pcall(boRelease, true)
         pcall(fbRelease, true)
         pcall(ichRelease)
@@ -5316,6 +5435,12 @@ UI.hints = {
     ["Highlight Myself"] = "Highlights you too, for the self-obsessed.",
     ["Hide Completed Machines"] = "Finished machines stop glowing, so you only see the ones left.",
     ["Hide Used Doors"] = "Used Trick or Treat doors lose their highlight.",
+    ["Include Shop Items"] = "Also highlight the items for sale in the elevator shop (the models in Slot1, Slot2 and Slot3).",
+    ["Shop Item Colors"] = "Like Normal Items, one color for all shop items, or by whether you have enough Tapes for each one.",
+    ["Normal Item Colors When I Have Enough"] = "Items you can afford get their normal item color instead of the Enough Tapes color.",
+    ["Only Highlight When I Have Enough"] = "Shop items you can't afford aren't highlighted at all.",
+    ["Include Puddle Tops"] = "Also highlight the raised Ichor_Puddle_Top bits. Off marks only the puddles themselves.",
+    ["Different Color For Finn's Puddle"] = "Finn's puddle (FinnIchorPuddle) uses its own color instead of the normal puddle color.",
     ["Per-Item Colors"] = "Gives each item type its own color (see Item Colors).",
     ["Show Twisted Astro's Pillows"] = "Shows Twisted Astro's pillows, in their own color.",
     ["Different Color For Others"] = "Other people's pillows get a color of their own.",
@@ -5333,6 +5458,7 @@ UI.hints = {
     ["Ability Animations Follow Speed"] = "Ability animations match your speed while you move, or your decode speed while you extract.",
     ["Fullbright"] = "See everything. Raises the ambient light, removes shadows and fog.",
     ["Everything Except Floors"] = "Noclip turns off collision for every fixed part in the game, except floors, Stairs and characters.",
+    ["Adblocker"] = "Blocks Twisted Vee's popups so they never show up. Her slowness still applies.",
     ["Hide Ichor Splats"] = "Hides the ink that covers your screen when you step in an Ichor puddle.",
     ["Fullbright Brightness"] = "How bright the ambient light is while Fullbright is on.",
     ["Walk Speed (Units Added)/All Floors"] = "Extra walk speed on every floor.",
@@ -5673,6 +5799,8 @@ local function resetESPColors()
     local c, d = Cfg.Categories, DEF.Categories
     for _, k in ipairs({ "Players", "Twisteds", "Tendrils", "BlotHands", "RazzleVines", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
     c.Elevator.FakeColor = d.Elevator.FakeColor
+    c.IchorPuddles.FinnColor = d.IchorPuddles.FinnColor
+    c.Items.ShopColor, c.Items.ShopAffordColor, c.Items.ShopNoAffordColor = d.Items.ShopColor, d.Items.ShopAffordColor, d.Items.ShopNoAffordColor
     c.StarPillows.OtherColor = d.StarPillows.OtherColor
     c.StarPillows.TwistedColor = d.StarPillows.TwistedColor
     c.Generators.Colors = deepcopy(d.Generators.Colors)
@@ -5753,6 +5881,28 @@ local function buildESPPage()
     else itemCtl[#itemCtl + 1] = cl("All Items", it, "Color", DEF.Categories.Items) end
     secs[#secs + 1] = { title = "Items", controls = itemCtl }
 
+    local SHOP_NAMES = { Normal = "Like Normal Items", Custom = "One Shop Color", Tapes = "By Tapes" }
+    local SHOP_MODES = { ["Like Normal Items"] = "Normal", ["One Shop Color"] = "Custom", ["By Tapes"] = "Tapes" }
+    local shopCtl = {
+        { t = "toggle", text = "Include Shop Items", get = function() return it.Shop end,
+            set = function(v) it.Shop = v; espDirty = true; refreshPage() end },
+    }
+    if it.Shop then
+        shopCtl[#shopCtl + 1] = { t = "dropdown", text = "Shop Item Colors", get = function() return SHOP_NAMES[it.ShopMode] or "Like Normal Items" end,
+            options = function() return { "Like Normal Items", "One Shop Color", "By Tapes" } end,
+            set = function(o) it.ShopMode = SHOP_MODES[o] or "Normal"; espDirty = true; refreshPage() end }
+        if it.ShopMode == "Custom" then
+            shopCtl[#shopCtl + 1] = cl("Shop Item Color", it, "ShopColor", DEF.Categories.Items)
+        elseif it.ShopMode == "Tapes" then
+            shopCtl[#shopCtl + 1] = cl("Enough Tapes", it, "ShopAffordColor", DEF.Categories.Items)
+            shopCtl[#shopCtl + 1] = cl("Not Enough Tapes", it, "ShopNoAffordColor", DEF.Categories.Items)
+            shopCtl[#shopCtl + 1] = tg("Normal Item Colors When I Have Enough", it, "ShopAffordNormal")
+            shopCtl[#shopCtl + 1] = tg("Only Highlight When I Have Enough", it, "ShopAffordOnly")
+        end
+        shopCtl[#shopCtl + 1] = { t = "text", text = "Shop items are the models in the elevator shop's Slot1, Slot2 and Slot3. Like Normal Items uses the same colors as that item in the rooms (Per-Item Colors and hidden items apply). By Tapes compares each item's Cost with your Tapes (SurvivalPoints): one color when you can afford it, another when you can't. Normal Item Colors When I Have Enough shows affordable items in their normal item color instead, and Only Highlight When I Have Enough hides the ones you can't afford. If the price or your Tapes can't be read, the item keeps its normal color."}
+    end
+    secs[#secs + 1] = { title = "Shop Items", controls = shopCtl }
+
     if it.PerItem then
         local ic = { { t = "text", text = "Tick the box to show an item, click the swatch to pick its color. Truly cutting-edge technology."} }
         for _, name in ipairs(KNOWN_ITEMS) do
@@ -5768,7 +5918,12 @@ local function buildESPPage()
     secs[#secs + 1] = { title = "Twisted Sprout's Tendrils", controls = { tg("Enabled", cats.Tendrils, "Enabled"), tg("Fill", cats.Tendrils, "Fill"), cl("Color", cats.Tendrils, "Color", DEF.Categories.Tendrils) } }
     secs[#secs + 1] = { title = "Twisted Blot's Hands", controls = { tg("Enabled", cats.BlotHands, "Enabled"), tg("Fill", cats.BlotHands, "Fill"), cl("Color", cats.BlotHands, "Color", DEF.Categories.BlotHands) } }
     secs[#secs + 1] = { title = "Twisted Razzle & Dazzle's Vines", controls = { tg("Enabled", cats.RazzleVines, "Enabled"), tg("Fill", cats.RazzleVines, "Fill"), cl("Color", cats.RazzleVines, "Color", DEF.Categories.RazzleVines) } }
-    secs[#secs + 1] = { title = "Ichor Puddles", controls = { tg("Enabled", cats.IchorPuddles, "Enabled"), tg("Fill", cats.IchorPuddles, "Fill"), cl("Color", cats.IchorPuddles, "Color", DEF.Categories.IchorPuddles) } }
+    secs[#secs + 1] = { title = "Ichor Puddles", controls = {
+        tg("Enabled", cats.IchorPuddles, "Enabled"), tg("Fill", cats.IchorPuddles, "Fill"), cl("Color", cats.IchorPuddles, "Color", DEF.Categories.IchorPuddles),
+        tg("Include Puddle Tops", cats.IchorPuddles, "Tops"),
+        tg("Different Color For Finn's Puddle", cats.IchorPuddles, "FinnDiff"), cl("Finn's Puddle Color", cats.IchorPuddles, "FinnColor", DEF.Categories.IchorPuddles),
+        { t = "text", text = "Puddle Tops are the raised Ichor_Puddle_Top bits that go with the puddles. Turn them off to only mark the puddles themselves. Finn's Puddle is the one Twisted Finn makes (FinnIchorPuddle); with the switch on it uses its own color so you can tell it apart."},
+    } }
     return secs
 end
 
@@ -6057,6 +6212,15 @@ local worldNames = ""     -- what is typed in the World tab's "Extra Names" box
 -- game GUI tweaks (things drawn on your screen, rather than things in the map)
 local function buildScreenPage()
     return {
+        { title = "Adblocker", controls = {
+            { t = "text", text = "Twisted Vee throws fake ad popups onto your screen while she chases you. This blocks them so they never show up at all (and never make their sound). Turn it off and they come back. It only blocks the popups: the slowness her ability gives you still happens."},
+            { t = "toggle", text = "Adblocker", get = function() return SP.adblockOn() end,
+                set = function(v)
+                    SP.setAdblock(v)
+                    if v and not SP.adblockWorks() then toast("Adblocker on, but this executor has no getconnections, so popups are only closed after they appear.", "info")
+                    else toast(v and "Adblocker on. Vee's popups are blocked." or "Adblocker off. Vee's popups are back.", "info") end
+                end },
+        } },
         { title = "Ichor Splats", controls = {
             { t = "text", text = "Stepping in an Ichor puddle splats ink across your whole screen. This hides those splats. Turn it off and they come back."},
             { t = "toggle", text = "Hide Ichor Splats", get = function() return SP.hideIchorOn() end,
@@ -11295,7 +11459,7 @@ Features.switches = {
         local pc = Fun.Pur.Cfg
         return {
             SpeedModifier = Speed.Enabled, InfiniteStamina = Stam.Infinite, AutoRun = Stam.AutoRun,
-            Noclip = SP.noclipOn(), Fullbright = SP.fullbrightOn(), HideIchorSplats = SP.hideIchorOn(),
+            Noclip = SP.noclipOn(), Fullbright = SP.fullbrightOn(), HideIchorSplats = SP.hideIchorOn(), Adblocker = SP.adblockOn(),
             AutoDefault = Auto.Default, AutoCircle = Auto.Circle, AutoTreadmill = Auto.Treadmill, AutoSwimmy = Auto.Swimmy, AutoInstant = Auto.Instant,
             Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled,
         }
@@ -11309,6 +11473,7 @@ Features.switches = {
         if has("Noclip") and SP.noclipOn() ~= d.Noclip then SP.setNoclip(d.Noclip) end
         if has("Fullbright") then SP.setFullbright(d.Fullbright) end
         if has("HideIchorSplats") then SP.setHideIchor(d.HideIchorSplats) end
+        if has("Adblocker") then SP.setAdblock(d.Adblocker) end
         for k, key in pairs({ AutoDefault = "Default", AutoCircle = "Circle", AutoTreadmill = "Treadmill", AutoSwimmy = "Swimmy", AutoInstant = "Instant" }) do
             if has(k) then Auto[key] = d[k] end
         end
