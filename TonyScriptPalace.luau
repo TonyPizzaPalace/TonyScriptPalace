@@ -254,6 +254,8 @@ local Cfg = {
     Categories = {
         Players    = { Enabled = true, Fill = true, Self = false, Color = C(0, 255, 0) },
         Twisteds   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },
+        Ichorlings = { Enabled = true, Fill = true, Mode = "Mine", Color = C(0, 255, 0), OtherDiff = false, OtherColor = C(0, 255, 0) },   -- the bot copies in Workspace.Decoys (named Ichorling#<UserId>, owner in an Owner value). Mode: "Mine" or "All"
+        GlitterGlue = { Enabled = true, Fill = true, Color = C(128, 0, 255) },   -- the puddle the Glitter Glue item leaves (the GlitterGluePuddle model)
         Tendrils   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Sprout's tendrils (SproutTendril)
         GigiStash  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Gigi's Stash (the GigiHoard model in the room's Items folder)
         Elevator   = { Enabled = true, Fill = true, Color = C(0, 255, 0), Fake = true, FakeColor = C(255, 0, 0) },   -- the real elevator's ElevatorDoor, and optionally the fake elevators' doors
@@ -263,6 +265,8 @@ local Cfg = {
         Generators = { Enabled = true, Fill = true, HideCompleted = false, Brusha = true, DuoOne = true, Colors = {
             Incomplete = C(255, 0, 0), InProgress = C(255, 255, 0), Completed = C(0, 255, 0), Connie = C(0, 255, 255), Brusha = C(128, 0, 255),
             DuoOne = C(255, 128, 0),      -- duo machine with only one player working on it
+            QuadSome = C(255, 128, 0),    -- quad machine (4 slots, still named DualGen by the game) with 1 to 3 players on it
+            QuadFull = C(255, 255, 0),    -- quad machine with all 4 slots taken
         } },
         Doors      = { Enabled = true, Fill = true, Color = C(255, 128, 0), HideUsed = false },
         StarPillows = { Enabled = true, Fill = true, Mode = "All", Color = C(0, 0, 255), OtherDiff = false, OtherColor = C(255, 0, 255),
@@ -359,13 +363,23 @@ do
         local completed = val("Completed") == true
         if val("Connie") == true then return colors.Connie, completed end
         if completed then return colors.Completed, true end
-        local workers = 0
-        if val("ActivePlayer") then workers += 1 end
-        if val("ActivePlayer2") then workers += 1 end
-        local isDuo = gen:GetAttribute("IsDualGen") == true
-        if isDuo and workers == 1 and Cfg.Categories.Generators.DuoOne then return colors.DuoOne, false end   -- one of the two slots is taken
-        local needed = isDuo and 2 or 1
-        if workers >= needed then return colors.InProgress, false end
+        -- Quad machines: the game still names them DualGen, but they carry MachineFamily = "QUAD" and four slots (ActivePlayer .. ActivePlayer4)
+        if gen:GetAttribute("MachineFamily") == "QUAD" or stats:FindFirstChild("ActivePlayer4") then
+            local w = 0
+            for _, n in ipairs({ "ActivePlayer", "ActivePlayer2", "ActivePlayer3", "ActivePlayer4" }) do
+                if val(n) then w += 1 end
+            end
+            if w >= 4 then return colors.QuadFull, false end
+            if w >= 1 then return colors.QuadSome, false end
+        else
+            local workers = 0
+            if val("ActivePlayer") then workers += 1 end
+            if val("ActivePlayer2") then workers += 1 end
+            local isDuo = gen:GetAttribute("IsDualGen") == true
+            if isDuo and workers == 1 and Cfg.Categories.Generators.DuoOne then return colors.DuoOne, false end   -- one of the two slots is taken
+            local needed = isDuo and 2 or 1
+            if workers >= needed then return colors.InProgress, false end
+        end
         if Cfg.Categories.Generators.Brusha then      -- incomplete, idle, no Connie, but carrying Brusha's debuff chamber
             local ch = gen:FindFirstChild("BrushaDebuffChamber", true)
             if ch and ch:IsA("MeshPart") then return colors.Brusha, false end
@@ -412,6 +426,36 @@ do
                 add(LP.Character, cats.Players.Color, "Players")
             end
         end
+
+        -- Ichorlings: the bot copies in Workspace.Decoys, named Ichorling#<UserId>. Who owns one is in its Owner value (an ObjectValue pointing at the Player here;
+        -- a StringValue holding a name works too), and the UserId in the name is the fallback.
+        if cats.Ichorlings.Enabled then
+            local f = Workspace:FindFirstChild("Decoys")
+            if f then
+                local ic = cats.Ichorlings
+                for _, m in ipairs(f:GetChildren()) do
+                    if m:IsA("Model") and m.Name:find("^Ichorling") then
+                        local o = m:FindFirstChild("Owner")
+                        local v = o and o:IsA("ValueBase") and o.Value or nil
+                        local mine
+                        if typeof(v) == "Instance" then mine = isMine(v)
+                        elseif type(v) == "string" and v ~= "" then mine = (v == LP.Name or v == LP.DisplayName or v == tostring(LP.UserId))
+                        else mine = (m.Name == "Ichorling#" .. LP.UserId) end
+                        if mine or ic.Mode == "All" then
+                            add(m, (ic.OtherDiff and not mine) and ic.OtherColor or ic.Color, "Ichorlings")
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Glitter Glue puddles are put straight into the room (or its FreeArea / Puddles folder); looked for in Workspace too, just in case
+        local function addGlue(folder)
+            for _, c in ipairs(folder:GetChildren()) do
+                if c.Name == "GlitterGluePuddle" then add(c, cats.GlitterGlue.Color, "GlitterGlue") end
+            end
+        end
+        if cats.GlitterGlue.Enabled then addGlue(Workspace) end
 
         if cats.Elevator.Enabled then          -- the real elevator is not inside a room: Workspace.Elevators.Elevator.ElevatorDoor
             local els = Workspace:FindFirstChild("Elevators")
@@ -496,11 +540,18 @@ do
                 addVines(room)
             end
             -- the Puddles folder holds Ichor puddles and also Twisted Barnaby (TBarnaby_v3), who belongs to the Twisted ESP
+            if cats.GlitterGlue.Enabled then
+                addGlue(room)
+                local fa = room:FindFirstChild("FreeArea")
+                if fa then addGlue(fa) end
+            end
             local puddles = room:FindFirstChild("Puddles")
             if puddles then
                 for _, c in ipairs(puddles:GetChildren()) do
                     if c.Name == "TBarnaby_v3" then
                         if cats.Twisteds.Enabled then add(c, cats.Twisteds.Color, "Twisteds") end
+                    elseif c.Name == "GlitterGluePuddle" then
+                        if cats.GlitterGlue.Enabled then add(c, cats.GlitterGlue.Color, "GlitterGlue") end   -- not an Ichor puddle, whatever folder it sits in
                     elseif cats.IchorPuddles.Enabled then
                         local ip = cats.IchorPuddles
                         if c.Name:find("^Ichor_Puddle_Top") then
@@ -1178,7 +1229,9 @@ do
         local runA = ch.Animations:FindFirstChild("Run")
         local ov = runA and runA:FindFirstChild("RunOverride")
         local sp = (ov and (ov:IsA("NumberValue") or ov:IsA("IntValue"))) and ov.Value or 1
-        if tr.Speed ~= sp then tr:AdjustSpeed(sp) end
+        -- Animation Sync leaves this track alone (it is ours and this function owns its speed), so the sync multiplier is applied here
+        local want = sp * ((an.mult and an.mult > 0) and an.mult or 1)
+        if math.abs(tr.Speed - want) > 1e-4 then tr:AdjustSpeed(want) end
     end
 
     -- Sprint icon (the game shows it while you really sprint)
@@ -1446,6 +1499,7 @@ do
         return n and animClass(n) or nil
     end
     local function animRestore()
+        an.mult = 1
         if not as.active then return end
         as.active = false
         for tr, w in pairs(as.wrote) do
@@ -1459,7 +1513,7 @@ do
     local function animSync(ch, hum, stats, running)
         local A = Speed.Anim
         local animator = hum:FindFirstChildOfClass("Animator")
-        if not (A.On and animator) then animRestore(); return end
+        if not (A.On and animator) then an.mult = 1; animRestore(); return end
         if as.ch ~= ch then as.ch = ch; as.names = {}; as.base = nil end
         local base = animBase(ch, stats)
         local hs = hum.WalkSpeed
@@ -1468,6 +1522,7 @@ do
         local wm = math.clamp(hs / math.max(wBase, 0.01), 0.25, 3)
         local rm = math.clamp(hs / math.max(rBase, 0.01), 0.25, 3)
         if running then wm = 1 else rm = 1 end   -- only the state you are in follows your speed, so a fading Walk or Run track is not stretched
+        an.mult = running and rm or 1             -- the fake run (Infinite Stamina with no stamina left) plays its own Run track; runAnim reads this to speed it up
         local dm = math.clamp(statNum(stats, "DecodeSpeedModifier", 1), 0.25, 3)
         local moving = hum.MoveDirection.Magnitude > 0.01
         local dec = ch:FindFirstChild("Decoding")
@@ -1479,6 +1534,10 @@ do
         local mult = { Walk = wm, Run = rm, Decode = dm, Ability = abilityM }
         local seen = {}
         for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
+            if tr == an.track then      -- the fake run track: runAnim sets its speed (writing it here too would be undone every frame)
+                if running and tr.WeightCurrent > 0.05 then seen.Run = rm end
+                continue
+            end
             local kind = animKind(ch, tr)
             local m = kind and mult[kind]
             if m then
@@ -2341,6 +2400,7 @@ local Auto = {
     SwimmyCoinEvery = false,    -- credit one coin for every seaweed gap Barnaby passes (also the ones that spawned no coin)
     SwimmyRapid = false,        -- keep collecting coins non-stop, SwimmyRapidRate per second
     SwimmyRapidRate = 4,
+    ChaseQuit = false,      -- Chase Safety: leave the machine the moment a Twisted is chasing you (even mid skill check)
     Status = "Idle",
 }
 do
@@ -2680,11 +2740,41 @@ do
         sw.M = nil; sw.inst = nil
     end
 
+    -- ---------------------------------------------------------- CHASE SAFETY
+    -- While any Twisted is chasing you (the game's ChaseCount on your player) and you are on a machine, you are taken off it: the same "Stop" the
+    -- machine's Stop button sends (the button itself is locked during a skill check, this is not), then the game's own client-side unwind, which
+    -- aborts a skill check in progress. Because it checks every frame, starting a machine while chased gets you kicked straight back off.
+    local cq = { last = 0 }
+    local function realChaseCount()
+        local n = math.max(0, math.floor(tonumber(LP:GetAttribute("ChaseCount")) or 0))
+        local pur = Fun.Pur
+        if pur and pur.counted and pur.counted() then n = math.max(0, n - 1) end   -- your own Pursuer adds one to that number, and it is not a Twisted
+        return n
+    end
+    local function chaseQuit()
+        if os.clock() - cq.last < 0.4 then return end
+        local ch = LP.Character
+        local dec = ch and ch:FindFirstChild("Decoding")
+        local machine = dec and dec:IsA("ObjectValue") and dec.Value or nil
+        if not (machine and machine.Parent) then return end      -- not on a machine
+        local n = realChaseCount()
+        if n <= 0 then return end
+        cq.last = os.clock()
+        local stats = machine:FindFirstChild("Stats")
+        local stop = stats and stats:FindFirstChild("StopInteracting")
+        if stop and stop:IsA("RemoteEvent") then pcall(stop.FireServer, stop, "Stop") end
+        local ui = try(require, ReplicatedStorage.Modules.ClientUI.GeneratorUIController)
+        if ui and ui.ForceDisengage then pcall(ui.ForceDisengage) end
+        Auto.Status = "Chase Safety: left the machine (" .. n .. " chasing you)"
+        if Auto.onChaseQuit then pcall(Auto.onChaseQuit, "A Twisted is chasing you. Chase Safety took you off the machine.") end
+    end
+
     -- ---------------------------------------------------------- MAIN LOOP
     local tmr = 0
     connect(RunService.RenderStepped, function(dt)
         if not alive then return end
         dt = math.min(dt, 0.1)
+        if Auto.ChaseQuit then pcall(chaseQuit) end
         tmr = tmr + dt
         if tmr > 0.3 then tmr = 0; pcall(maintainWrap) end
         if Auto.Default then pcall(stepDefault) else dflt.last = nil end
@@ -4324,6 +4414,7 @@ RunService:BindToRenderStep(BIND, Enum.RenderPriority.Camera.Value + 1, function
 end)
 
 function P.status() return E.why end
+function P.counted() return E.counted == true end      -- true while the Pursuer is adding one to your ChaseCount (so it can be told apart from real Twisteds)
 function P.distance() return E.phase == "chase" and string.format("%.0f studs", E.dist) or "-" end
 function P.timerText() return fmtTime(E.timer) end
 function P.floorText()
@@ -5548,6 +5639,7 @@ UI.hints = {
     ["Highlight Myself"] = "Highlights you too, for the self-obsessed.",
     ["Hide Completed Machines"] = "Finished machines stop glowing, so you only see the ones left.",
     ["Hide Used Doors"] = "Used Trick or Treat doors lose their highlight.",
+    ["Force Quit Machine When A Twisted Chases You"] = "Takes you off the machine the moment a real Twisted is chasing you, even mid skill check.",
     ["Enable Blotspeak"] = "Everything you type in chat is sent backwards. Commands that start with / are left alone.",
     ["Include Shop Items"] = "Also highlight the items for sale in the elevator shop (the models in Slot1, Slot2 and Slot3).",
     ["Shop Item Colors"] = "Like Normal Items, one color for all shop items, or by whether you have enough Tapes for each one.",
@@ -5918,6 +6010,7 @@ function toast(msg, kind)
 end
 
 SP.onFlagUI = function(msg) toast(msg, "err") end
+Auto.onChaseQuit = function(msg) toast(msg, "info") end
 
 --#endregion row-builders
 --#region libs
@@ -5980,11 +6073,12 @@ local function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) 
 
 local function resetESPColors()
     local c, d = Cfg.Categories, DEF.Categories
-    for _, k in ipairs({ "Players", "Twisteds", "Tendrils", "BlotHands", "RazzleVines", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
+    for _, k in ipairs({ "Players", "Twisteds", "Ichorlings", "GlitterGlue", "Tendrils", "BlotHands", "RazzleVines", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
     c.Elevator.FakeColor = d.Elevator.FakeColor
     c.IchorPuddles.FinnColor = d.IchorPuddles.FinnColor
     c.Items.ShopColor, c.Items.ShopAffordColor, c.Items.ShopNoAffordColor = d.Items.ShopColor, d.Items.ShopAffordColor, d.Items.ShopNoAffordColor
     c.StarPillows.OtherColor = d.StarPillows.OtherColor
+    c.Ichorlings.OtherColor = d.Ichorlings.OtherColor
     c.StarPillows.TwistedColor = d.StarPillows.TwistedColor
     c.Generators.Colors = deepcopy(d.Generators.Colors)
     c.Items.Color, c.Items.Fallback, c.Items.Colors = d.Items.Color, d.Items.Fallback, deepcopy(d.Items.Colors)
@@ -6019,6 +6113,22 @@ local function buildESPPage()
     } }
     secs[#secs + 1] = { title = "Toons", controls = { tg("Enabled", cats.Players, "Enabled"), tg("Fill", cats.Players, "Fill"), tg("Highlight Myself", cats.Players, "Self"), cl("Color", cats.Players, "Color", DEF.Categories.Players) } }
     secs[#secs + 1] = { title = "Twisteds", controls = { tg("Enabled", cats.Twisteds, "Enabled"), tg("Fill", cats.Twisteds, "Fill"), cl("Color", cats.Twisteds, "Color", DEF.Categories.Twisteds) } }
+    local ICH_NAMES = { Mine = "Only Mine", All = "Everyone's" }
+    local ICH_MODES = { ["Only Mine"] = "Mine", ["Everyone's"] = "All" }
+    local ich = cats.Ichorlings
+    local ichCtl = {
+        tg("Enabled", ich, "Enabled"), tg("Fill", ich, "Fill"),
+        { t = "dropdown", text = "Highlight", get = function() return ICH_NAMES[ich.Mode] or "Only Mine" end,
+            options = function() return { "Only Mine", "Everyone's" } end,
+            set = function(o) ich.Mode = ICH_MODES[o] or "Mine"; espDirty = true; refreshPage() end },
+        cl("Color", ich, "Color", DEF.Categories.Ichorlings),
+    }
+    if ich.Mode == "All" then
+        ichCtl[#ichCtl + 1] = tg("Different Color For Others' Ichorlings", ich, "OtherDiff")
+        ichCtl[#ichCtl + 1] = cl("Others' Ichorlings Color", ich, "OtherColor", DEF.Categories.Ichorlings)
+    end
+    ichCtl[#ichCtl + 1] = { t = "text", text = "Ichorlings are the bot-controlled copies of players that live in Workspace.Decoys. Only Mine highlights just yours (found through its Owner). Everyone's highlights all of them, and then you can give the other players' Ichorlings their own color." }
+    secs[#secs + 1] = { title = "Ichorlings", controls = ichCtl }
     secs[#secs + 1] = { title = "Machines", controls = {
         tg("Enabled", cats.Generators, "Enabled"), tg("Fill", cats.Generators, "Fill"),
         tg("Hide Completed Machines", cats.Generators, "HideCompleted"),
@@ -6026,6 +6136,8 @@ local function buildESPPage()
         cl("Completed", cats.Generators.Colors, "Completed", DEF.Categories.Generators.Colors), cl("Connie", cats.Generators.Colors, "Connie", DEF.Categories.Generators.Colors),
         tg("Color Brusha Debuffed Machines", cats.Generators, "Brusha"), cl("Brusha Debuffed", cats.Generators.Colors, "Brusha", DEF.Categories.Generators.Colors),
         tg("Color Duo Machines With One Worker", cats.Generators, "DuoOne"), cl("Duo, One Worker", cats.Generators.Colors, "DuoOne", DEF.Categories.Generators.Colors),
+        cl("Quad, 1-3 Workers", cats.Generators.Colors, "QuadSome", DEF.Categories.Generators.Colors), cl("Quad, 4 Workers", cats.Generators.Colors, "QuadFull", DEF.Categories.Generators.Colors),
+        { t = "text", text = "Quad machines are the four-slot ones (the game still calls them DualGen). They use their own two colors instead of In Progress: one color while 1 to 3 players are on it, another once all 4 slots are taken. Completed, Connie and Brusha still win over them." },
     } }
     secs[#secs + 1] = { title = "Twisted Gigi's Stash", controls = { tg("Enabled", cats.GigiStash, "Enabled"), tg("Fill", cats.GigiStash, "Fill"), cl("Color", cats.GigiStash, "Color", DEF.Categories.GigiStash) } }
     local PILLOW_NAMES = { All = "Everyone's", Mine = "Only Mine", Others = "Only Others'" }
@@ -6052,6 +6164,11 @@ local function buildESPPage()
         tg("Enabled", cats.Elevator, "Enabled"), tg("Fill", cats.Elevator, "Fill"), cl("Color", cats.Elevator, "Color", DEF.Categories.Elevator),
         tg("Highlight Fake Elevator", cats.Elevator, "Fake"), cl("Fake Elevator Color", cats.Elevator, "FakeColor", DEF.Categories.Elevator),
         { t = "text", text = "Highlights the door of the real elevator. Highlight Fake Elevator also marks the doors of the fake elevators (the Door of a FakeElevator, and the ElevatorDoor of Labs' fake elevator) in their own color, so you can tell them apart."},
+    } }
+
+    secs[#secs + 1] = { title = "Glitter Glue Puddle", controls = {
+        tg("Enabled", cats.GlitterGlue, "Enabled"), tg("Fill", cats.GlitterGlue, "Fill"), cl("Color", cats.GlitterGlue, "Color", DEF.Categories.GlitterGlue),
+        { t = "text", text = "The puddle the Glitter Glue item leaves behind. It isn't an Ichor puddle, and it mostly helps you: standing in it gives +75% Extraction Speed, at the price of Slow I (-15% walk and run speed)." },
     } }
 
     local it = cats.Items
@@ -6552,6 +6669,11 @@ local function buildAutomationPage()
             { t = "toggle", text = "Affect Treadmill Machines", get = function() return Auto.InstantKinds.treadmill end, set = function(v) Auto.InstantKinds.treadmill = v end },
             { t = "slider", text = "Response Delay (Seconds)", min = 0, max = 2, dec = 2, step = 0.05,
                 get = function() return Auto.InstantDelay end, set = function(v) Auto.InstantDelay = v end },
+        } },
+        { title = "Chase Safety", controls = {
+            { t = "text", text = "Takes you off the machine the instant any Twisted is chasing you. It works mid skill check too, and if you start extracting while a Twisted is chasing you, you are kicked straight off again. Your own Pursuer doesn't count, only real Twisteds." },
+            { t = "toggle", text = "Force Quit Machine When A Twisted Chases You", get = function() return Auto.ChaseQuit end,
+                set = function(v) Auto.ChaseQuit = v; Auto.Status = v and "Chase Safety on" or "Chase Safety off" end },
         } },
         { title = "Status", controls = {
             { t = "readout", text = "Last Action", get = function() return Auto.Status end },
@@ -11732,7 +11854,7 @@ Features.switches = {
             SpeedModifier = Speed.Enabled, InfiniteStamina = Stam.Infinite, AutoRun = Stam.AutoRun,
             Noclip = SP.noclipOn(), Fullbright = SP.fullbrightOn(), HideIchorSplats = SP.hideIchorOn(), Adblocker = SP.adblockOn(),
             AutoDefault = Auto.Default, AutoCircle = Auto.Circle, AutoTreadmill = Auto.Treadmill, AutoSwimmy = Auto.Swimmy, AutoInstant = Auto.Instant,
-            Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled, Blotspeak = Fun.Blot.Enabled,
+            Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled, Blotspeak = Fun.Blot.Enabled, ChaseQuit = Auto.ChaseQuit,
         }
     end,
     apply = function(d)
@@ -11756,6 +11878,7 @@ Features.switches = {
         end
         if has("MoreSkillChecks") then Fun.Enabled = d.MoreSkillChecks; Fun.Status = d.MoreSkillChecks and "On" or "Off" end
         if has("Blotspeak") then Fun.Blot.Set(d.Blotspeak) end
+        if has("ChaseQuit") then Auto.ChaseQuit = d.ChaseQuit == true end
     end,
 }
 Features.customizer = { serialize = function() return Cust.serialize() end, apply = function(d) Cust.apply(d) end }
@@ -11781,9 +11904,11 @@ end
 local ESP_GROUPS = {
     ["General"] = { g = "Basics" },
     ["Toons"] = { g = "Players" },
+    ["Ichorlings"] = { g = "Players" },
     ["Twisteds"] = { g = "Twisteds" },
     ["Machines"] = { g = "Objects" }, ["Twisted Gigi's Stash"] = { g = "Objects", r = "Gigi's Stash" }, ["Star Pillows"] = { g = "Objects" },
     ["Bookshelves"] = { g = "Objects" }, ["Trick or Treat Doors"] = { g = "Objects" }, ["Elevator"] = { g = "Objects" },
+    ["Glitter Glue Puddle"] = { g = "Objects", r = "Glitter Glue" },
     ["Items"] = { g = "Items" }, ["Item Colors"] = { g = "Items" },
     ["Twisted Sprout's Tendrils"] = { g = "Hazards", r = "Sprout's Tendrils" },   -- the full name is 25 characters, too wide for the rail in most skins
     ["Twisted Blot's Hands"] = { g = "Hazards", r = "Blot's Hands" },
