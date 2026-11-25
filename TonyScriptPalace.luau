@@ -2,9 +2,13 @@
 --[[
     TONY SCRIPT PALACE  -  for Dandy's World ONLY  (made for the Real executor)
     -----------------------------------------------------------------
-    Tabs:   ESP | Movement | World | Automation | Skill Checks | Pursuer | Customizer | Sound | Configs | Appearance
+    Tabs:   Gameplay  (ESP | Movement | World | Screen | Automation)
+            Fun       (Customizer | Sound | Skill Checks | Pursuer | Chat | Animations)
+            Configs
+            Options   (Appearance | Keybinds)
 
-    Layout: every tab has a section rail on the left. Pick a section and its controls fill the page (no collapsing, no long scrolling).
+    Layout: four tabs across the top, and the tab you pick decides which sub-tabs are listed down the left side.
+            Every sub-tab also has a section rail: pick a section and its controls fill the page (no collapsing, no long scrolling).
             Wide windows also pin the Customizer's 3D preview beside whatever section you are editing.
 
     Styles (Appearance tab, the last one you used loads next time):
@@ -17,7 +21,7 @@
     Adding a new tab later:
         1. write a function that returns a list of sections
            { { title = "...", controls = { {t="toggle", ...}, ... } } }
-        2. add  { id = "mytab", name = "My Tab", icon = "esp", build = fn }  to UI.tabs
+        2. add  { id = "mytab", name = "My Tab", cat = "gameplay", build = fn }  to UI.tabs   (cat = one of the ids in UI.cats; list order = side order)
            (wrap fn in  grouped(fn, { ["Section Title"] = { g = "Rail Group" } })  to group the rail)
         3. (optional) register save/load for configs:  Features.mytab = { serialize = fn, apply = fn }
     Write every label in Proper Case - the Aero skin lowercases it automatically.
@@ -4396,11 +4400,103 @@ end
 
 --#endregion pursuer-engine
 
+--#region chat-engine
+----------------------------------------------------------------------
+-- BLOTSPEAK  (Fun > Chat)
+-- Hooks the chat box so what you type is changed before it is sent. Right now the change is "reverse the text".
+-- Port of the standalone Blotspeak script: it needs getconnections (it pauses the chat box's own FocusLost handlers, sends the changed
+-- message itself, then fires the original handlers so the chat box still clears and closes like normal).
+-- Commands (anything starting with /) are never touched. Off by default, and nothing is hooked while it is off.
+----------------------------------------------------------------------
+Fun.Blot = { Enabled = false }
+do
+    local Blot = Fun.Blot
+    if _G.Blotspeak and _G.Blotspeak.Unhook then pcall(_G.Blotspeak.Unhook) end   -- the standalone script would fight this one over the chat box
+
+    local TCS = game:GetService("TextChatService")
+    local boundBox, ourConn, originals = nil, nil, {}
+    local level, text = "info", "Off."
+
+    local function transform(msg) return msg:reverse() end
+
+    local function getBox()
+        local ec = CoreGui:FindFirstChild("ExperienceChat")
+        if not ec then return nil end
+        for _, v in ipairs(ec:GetDescendants()) do
+            if v:IsA("TextBox") and v:FindFirstAncestor("chatInputBar") then return v end
+        end
+        return nil
+    end
+
+    local function unbind()
+        if ourConn then ourConn:Disconnect(); ourConn = nil end
+        for _, c in ipairs(originals) do pcall(function() c:Enable() end) end
+        originals = {}
+        boundBox = nil
+    end
+
+    local function bind(box)
+        unbind()
+        boundBox = box
+        for _, c in ipairs(getconnections(box.FocusLost)) do
+            originals[#originals + 1] = c
+            c:Disable()
+        end
+        ourConn = box.FocusLost:Connect(function(enterPressed, ...)
+            local extra = table.pack(...)
+            if Blot.Enabled and enterPressed then
+                local raw = box.Text
+                if raw:match("%S") and raw:sub(1, 1) ~= "/" then
+                    local ch = TCS:FindFirstChild("TextChannels") and TCS.TextChannels:FindFirstChild("RBXGeneral")
+                    if ch then   -- no channel found: leave the text alone so the normal chat still sends it (just not reversed)
+                        box.Text = ""
+                        task.spawn(function() pcall(function() ch:SendAsync(transform(raw)) end) end)
+                    end
+                end
+            end
+            for _, c in ipairs(originals) do
+                pcall(function() c:Fire(enterPressed, table.unpack(extra, 1, extra.n)) end)
+            end
+        end)
+    end
+
+    local function step()
+        if not Blot.Enabled then
+            if boundBox then unbind() end
+            level, text = "info", "Off."
+        elseif not getconnections then
+            level, text = "bad", "This executor has no getconnections, so Blotspeak can't hook the chat box."
+        elseif boundBox and boundBox.Parent then
+            level, text = "safe", "On. What you type is sent backwards (messages that start with / are left alone)."
+        else
+            local b = getBox()
+            if b and pcall(bind, b) then
+                level, text = "safe", "On. What you type is sent backwards (messages that start with / are left alone)."
+            else
+                if boundBox then unbind() end
+                level, text = "warn", "On, but the chat box wasn't found yet. It keeps looking."
+            end
+        end
+    end
+
+    function Blot.Set(v) Blot.Enabled = v and true or false; pcall(step) end
+    function Blot.status() return level, text end
+    function Blot.Unload() Blot.Enabled = false; pcall(unbind) end
+
+    task.spawn(function()
+        while alive do
+            pcall(step)
+            task.wait(1)
+        end
+    end)
+end
+
+--#endregion chat-engine
 --#region ui-core
 ----------------------------------------------------------------------
 -- UI CORE
 ----------------------------------------------------------------------
-local UI = { tabs = {}, current = "esp", visible = not S.startHidden, sel = {} }   -- sel[tab id] = key of the section picked in that tab
+local UI = { tabs = {}, cats = {}, current = "esp", curCat = "gameplay", catSel = {}, visible = not S.startHidden, sel = {} }   -- sel[tab id] = key of the section picked in that tab. cats = the top tabs, tabs = the sub-tabs listed down the side (tab.cat says which top tab they belong to), catSel[cat id] = the sub-tab last open in that top tab
 local T                                   -- active style tokens
 local gui, Win, Overlay, Content, StatusLbl, Orb, Grip, UIScaleObj, Host, Rail, PinPane
 local guiConns, popup, popupClose = {}, nil, nil
@@ -5259,6 +5355,23 @@ builders.buttons = function(parent, c, order)
     end
 end
 
+-- the big one: a tall button that asks twice. The first press only arms it (label changes, warning in the status bar); a second press inside 3 seconds fires it.
+builders.killbutton = function(parent, c, order)
+    local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, c.height or 84), LayoutOrder = order }, parent)
+    local armed = false
+    local _btn, lb
+    _btn, lb = Button(row, c.label, UDim2.new(1, -16, 1, -10), "red", function()
+        if not armed then
+            armed = true; lb.Text = c.armedLabel or "ARE YOU SURE? PRESS AGAIN"
+            toast(c.warn or "Press again within 3 seconds to confirm.", "err")
+            task.delay(3, function() if armed and lb.Parent then armed = false; lb.Text = c.label end end)
+            return
+        end
+        armed = false; lb.Text = c.label
+        c.fn()
+    end, { size = 22, pos = UDim2.fromOffset(8, 5) })
+end
+
 builders.text = function(parent, c, order)
     local x = padX()
     local font = T.F.reg
@@ -5435,12 +5548,13 @@ UI.hints = {
     ["Highlight Myself"] = "Highlights you too, for the self-obsessed.",
     ["Hide Completed Machines"] = "Finished machines stop glowing, so you only see the ones left.",
     ["Hide Used Doors"] = "Used Trick or Treat doors lose their highlight.",
+    ["Enable Blotspeak"] = "Everything you type in chat is sent backwards. Commands that start with / are left alone.",
     ["Include Shop Items"] = "Also highlight the items for sale in the elevator shop (the models in Slot1, Slot2 and Slot3).",
     ["Shop Item Colors"] = "Like Normal Items, one color for all shop items, or by whether you have enough Tapes for each one.",
     ["Normal Item Colors When I Have Enough"] = "Items you can afford get their normal item color instead of the Enough Tapes color.",
     ["Only Highlight When I Have Enough"] = "Shop items you can't afford aren't highlighted at all.",
     ["Include Puddle Tops"] = "Also highlight the raised Ichor_Puddle_Top bits. Off marks only the puddles themselves.",
-    ["Different Color For Finn's Puddle"] = "Finn's puddle (FinnIchorPuddle) uses its own color instead of the normal puddle color.",
+    ["Different Color For Twisted Finn's Ichor Puddles"] = "Twisted Finn's Ichor Puddles (FinnIchorPuddle) use their own color instead of the normal puddle color.",
     ["Per-Item Colors"] = "Gives each item type its own color (see Item Colors).",
     ["Show Twisted Astro's Pillows"] = "Shows Twisted Astro's pillows, in their own color.",
     ["Different Color For Others"] = "Other people's pillows get a color of their own.",
@@ -5555,7 +5669,7 @@ end
 local makePane, clearGui, loadSections   -- used by the skins, the library adapter and buildGui
 do
 local RAIL_W, PIN_W, PIN_MIN = 176, 300, 380                  -- rail width, pinned pane width, minimum width kept for the middle
-local SIDE_W = { dandy = 200, aero = 190, xmb = 90, xp = 190 }   -- how much of the window the skin's own tab column takes
+local SIDE_W = { dandy = 200, aero = 190, xmb = 190, xp = 190 }   -- how much of the window the skin's own tab column takes
 
 local function designW()
     local w = (Win and UIScaleObj) and (Win.AbsoluteSize.X / math.max(UIScaleObj.Scale, 0.1)) or 0
@@ -5570,6 +5684,8 @@ function clearGui(o) for _, ch in ipairs(o:GetChildren()) do if ch:IsA("GuiObjec
 function makePane()
     local par, pos, size = Content.Parent, Content.Position, Content.Size
     Host = New("Frame", { Name = "Pane", BackgroundTransparency = 1, BorderSizePixel = 0, Position = pos, Size = size }, par)
+    -- UI.sideFrame is the skin's sub-tab list. The Host remembers where it sits beside it, so a top tab with a single sub-tab (Configs) can hide the list and take its room
+    UI.hostBase = { pos = pos, size = size, shift = UI.sideFrame and (pos.X.Offset - UI.sideFrame.Position.X.Offset) or 0 }
     Content.Parent = Host
     local function side(name)
         local sf = New("ScrollingFrame", { Name = name, BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Visible = false,
@@ -5706,13 +5822,80 @@ local function refreshPage()
     task.defer(function() if Content and Content.Parent then Content.CanvasPosition = Vector2.new(0, y) end end)
 end
 
+-- NAVIGATION: top tabs (UI.cats) pick which sub-tabs (UI.tabs with that cat) are listed down the side; the sub-tab picks the page.
+function UI.subTabs(cat)
+    local out = {}
+    for _, t in ipairs(UI.tabs) do if t.cat == (cat or UI.curCat) then out[#out + 1] = t end end
+    return out
+end
+function UI.catName(cat)
+    for _, ct in ipairs(UI.cats) do if ct.id == (cat or UI.curCat) then return ct.name end end
+    return ""
+end
+
 local function setTab(id)
     if UI.current == id then return end
+    local tab
+    for _, t in ipairs(UI.tabs) do if t.id == id then tab = t end end
+    if not tab then return end
     UI.current = id
+    UI.curCat = tab.cat or UI.curCat
+    UI.catSel[UI.curCat] = id
     if T and T.kind == "xmb" then ui("open") end
     if UI.onTab then UI.onTab() end
     renderPage()
     if Content then Content.CanvasPosition = Vector2.zero end
+end
+
+function UI.setCat(cat)
+    if UI.curCat == cat then return end
+    local subs = UI.subTabs(cat)
+    if #subs == 0 then return end
+    local id = subs[1].id
+    for _, t in ipairs(subs) do if t.id == UI.catSel[cat] then id = t.id end end   -- reopen the sub-tab you were last on in that top tab
+    UI.curCat, UI.current = cat, id
+    UI.catSel[cat] = id
+    if T and T.kind == "xmb" then ui("open") end
+    if UI.onTab then UI.onTab() end
+    renderPage()
+    if Content then Content.CanvasPosition = Vector2.zero end
+end
+
+-- the row of top tabs. make(bar, cat, selected, size) draws one in the skin's own style and returns it. Returns a function that redraws the row.
+function UI.makeCatBar(parent, pos, size, gap, make)
+    local bar = New("Frame", { Name = "CatBar", BackgroundTransparency = 1, Position = pos, Size = size }, parent)
+    New("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, gap), SortOrder = Enum.SortOrder.LayoutOrder }, bar)
+    return function()
+        clearGui(bar)
+        local n = math.max(#UI.cats, 1)
+        for i, ct in ipairs(UI.cats) do
+            local b = make(bar, ct, ct.id == UI.curCat, UDim2.new(1 / n, -(gap * (n - 1)) / n, 1, 0))
+            b.LayoutOrder = i
+        end
+    end
+end
+
+-- the side list of sub-tabs for the picked top tab. make(list, tab, selected) draws one button and returns it. Returns a function that redraws the list.
+function UI.makeSubList(list, make)
+    return function()
+        clearGui(list)
+        for i, tb in ipairs(UI.subTabs()) do
+            local b = make(list, tb, tb.id == UI.current)
+            b.LayoutOrder = i
+        end
+    end
+end
+
+-- a top tab with only one sub-tab (Configs) has nothing to list, so the side list hides and the page takes its room
+function UI.applySide()
+    local side, hb = UI.sideFrame, UI.hostBase
+    if not (Host and side and hb) then return end
+    local show = #UI.subTabs() > 1
+    side.Visible = show
+    local sh = show and 0 or hb.shift
+    Host.Position = UDim2.new(hb.pos.X.Scale, hb.pos.X.Offset - sh, hb.pos.Y.Scale, hb.pos.Y.Offset)
+    Host.Size = UDim2.new(hb.size.X.Scale, hb.size.X.Offset + sh, hb.size.Y.Scale, hb.size.Y.Offset)
+    if UI.sideTitle then UI.sideTitle.Text = UI.catName() end
 end
 
 local function statusDefault() return "Press " .. S.keybind .. " to hide or show the hub." end
@@ -5879,14 +6062,13 @@ local function buildESPPage()
     }
     if it.PerItem then itemCtl[#itemCtl + 1] = cl("Other Items", it, "Fallback", DEF.Categories.Items)
     else itemCtl[#itemCtl + 1] = cl("All Items", it, "Color", DEF.Categories.Items) end
-    secs[#secs + 1] = { title = "Items", controls = itemCtl }
 
     local SHOP_NAMES = { Normal = "Like Normal Items", Custom = "One Shop Color", Tapes = "By Tapes" }
     local SHOP_MODES = { ["Like Normal Items"] = "Normal", ["One Shop Color"] = "Custom", ["By Tapes"] = "Tapes" }
-    local shopCtl = {
-        { t = "toggle", text = "Include Shop Items", get = function() return it.Shop end,
-            set = function(v) it.Shop = v; espDirty = true; refreshPage() end },
-    }
+    -- shop items are part of the Items ESP (same section), not a separate one
+    local shopCtl = itemCtl
+    shopCtl[#shopCtl + 1] = { t = "toggle", text = "Include Shop Items", get = function() return it.Shop end,
+        set = function(v) it.Shop = v; espDirty = true; refreshPage() end }
     if it.Shop then
         shopCtl[#shopCtl + 1] = { t = "dropdown", text = "Shop Item Colors", get = function() return SHOP_NAMES[it.ShopMode] or "Like Normal Items" end,
             options = function() return { "Like Normal Items", "One Shop Color", "By Tapes" } end,
@@ -5901,7 +6083,7 @@ local function buildESPPage()
         end
         shopCtl[#shopCtl + 1] = { t = "text", text = "Shop items are the models in the elevator shop's Slot1, Slot2 and Slot3. Like Normal Items uses the same colors as that item in the rooms (Per-Item Colors and hidden items apply). By Tapes compares each item's Cost with your Tapes (SurvivalPoints): one color when you can afford it, another when you can't. Normal Item Colors When I Have Enough shows affordable items in their normal item color instead, and Only Highlight When I Have Enough hides the ones you can't afford. If the price or your Tapes can't be read, the item keeps its normal color."}
     end
-    secs[#secs + 1] = { title = "Shop Items", controls = shopCtl }
+    secs[#secs + 1] = { title = "Items", controls = itemCtl }
 
     if it.PerItem then
         local ic = { { t = "text", text = "Tick the box to show an item, click the swatch to pick its color. Truly cutting-edge technology."} }
@@ -5921,8 +6103,8 @@ local function buildESPPage()
     secs[#secs + 1] = { title = "Ichor Puddles", controls = {
         tg("Enabled", cats.IchorPuddles, "Enabled"), tg("Fill", cats.IchorPuddles, "Fill"), cl("Color", cats.IchorPuddles, "Color", DEF.Categories.IchorPuddles),
         tg("Include Puddle Tops", cats.IchorPuddles, "Tops"),
-        tg("Different Color For Finn's Puddle", cats.IchorPuddles, "FinnDiff"), cl("Finn's Puddle Color", cats.IchorPuddles, "FinnColor", DEF.Categories.IchorPuddles),
-        { t = "text", text = "Puddle Tops are the raised Ichor_Puddle_Top bits that go with the puddles. Turn them off to only mark the puddles themselves. Finn's Puddle is the one Twisted Finn makes (FinnIchorPuddle); with the switch on it uses its own color so you can tell it apart."},
+        tg("Different Color For Twisted Finn's Ichor Puddles", cats.IchorPuddles, "FinnDiff"), cl("Twisted Finn's Ichor Puddle Color", cats.IchorPuddles, "FinnColor", DEF.Categories.IchorPuddles),
+        { t = "text", text = "Puddle Tops are the raised Ichor_Puddle_Top bits that go with the puddles. Turn them off to only mark the puddles themselves. Twisted Finn's Ichor Puddles are the ones Twisted Finn makes (FinnIchorPuddle); with the switch on they use their own color so you can tell them apart."},
     } }
     return secs
 end
@@ -5951,14 +6133,6 @@ local function buildMovementPage()
         { t = "toggle", text = "Show Actual Stamina", get = function() return Stam.ShowActual end, set = function(v) Stam.ShowActual = v end },
         { t = "toggle", text = "Show Sprint Icon While Fake Running", get = function() return Stam.Icon end, set = function(v) Stam.Icon = v end },
         { t = "text", text = "Infinite Stamina is smoke and mirrors. The server still thinks you're out of stamina and walking, so we set your speed to what a real sprint would give you (your Run adjustments below count if the speed modifier is on) and play the run animation. It kicks in when you try to run while empty. Show Actual Stamina gets rid of the fake full bar if you'd rather know the truth."},
-    } }
-    secs[#secs + 1] = { title = "Animation Sync", controls = {
-        { t = "text", text = "Makes your animations match your speed. Walk and run animations play faster or slower depending on how your humanoid speed compares to your toon's own walk and run speed (from its TowerData module), and exactly that speed means normal. The extraction animation follows your DecodeSpeedModifier, and ability animations follow your speed while you move or your decode speed while you extract. While you extract on a machine your speed is set to your normal walk speed (WalkSpeed x SpeedModifier; the run version if you run on a treadmill) instead of 0, and the speed modifier and skill check bonuses pause until you stop, so the animations stay in sync. Idle is never touched. Visual only, and only on your screen." },
-        { t = "toggle", text = "Sync Animation Speed With Stats", get = function() return Speed.Anim.On end,
-            set = function(v) Speed.Anim.On = v; if not v then SP.animRestore() end end },
-        { t = "toggle", text = "Ability Animations Follow Speed", get = function() return Speed.Anim.Ability end,
-            set = function(v) Speed.Anim.Ability = v end },
-        { t = "livetext", get = function() return "info", SP.animSt.text end },
     } }
     secs[#secs + 1] = { title = "Speed", controls = {
         { t = "text", text = "Speeding in Dandy's World is not a victimless crime.\n\n   \"Sir, do you know how fast you were walking?\"\n   \"Fast enough to lagback, officer.\"\n\nGo too fast and the anti-cheat yanks you back to where you were. It's not a ban, just the game telling you to chill. The Speed Trust score below drops every time you get flagged, so if it's dropping, ease off."},
@@ -6020,6 +6194,34 @@ local function buildMovementPage()
     secs[#secs + 1] = group("Walk Speed", "Walk")
     secs[#secs + 1] = group("Run Speed", "Run")
     return secs
+end
+
+
+-- Animation Sync lives in Fun > Animations now (it used to be a Movement section)
+function UI.buildAnimationsPage()
+    local secs = {}
+    secs[#secs + 1] = { title = "Animation Sync", controls = {
+        { t = "text", text = "Makes your animations match your speed. Walk and run animations play faster or slower depending on how your humanoid speed compares to your toon's own walk and run speed (from its TowerData module), and exactly that speed means normal. The extraction animation follows your DecodeSpeedModifier, and ability animations follow your speed while you move or your decode speed while you extract. While you extract on a machine your speed is set to your normal walk speed (WalkSpeed x SpeedModifier; the run version if you run on a treadmill) instead of 0, and the speed modifier and skill check bonuses pause until you stop, so the animations stay in sync. Idle is never touched. Visual only, and only on your screen." },
+        { t = "toggle", text = "Sync Animation Speed With Stats", get = function() return Speed.Anim.On end,
+            set = function(v) Speed.Anim.On = v; if not v then SP.animRestore() end end },
+        { t = "toggle", text = "Ability Animations Follow Speed", get = function() return Speed.Anim.Ability end,
+            set = function(v) Speed.Anim.Ability = v end },
+        { t = "livetext", get = function() return "info", SP.animSt.text end },
+    } }
+    return secs
+end
+
+-- Fun > Chat
+function UI.buildChatPage()
+    return {
+        { title = "Blotspeak", controls = {
+            { t = "text", text = "Blotspeak changes what you type in the chat box before it is sent. Right now that means your messages go out backwards. Anything that starts with / (a command) is left alone." },
+            { t = "toggle", text = "Enable Blotspeak", get = function() return Fun.Blot.Enabled end,
+                set = function(v) Fun.Blot.Set(v); toast(v and "Blotspeak on. Your chat goes out backwards." or "Blotspeak off. Chat is normal again.", "info") end },
+            { t = "livetext", get = function() return Fun.Blot.status() end },
+            { t = "text", text = "Right-click the toggle for a keybind or an on-screen button, so you can flip Blotspeak without opening the hub. It needs an executor with getconnections, and nothing is hooked while it is off." },
+        } },
+    }
 end
 
 local cfgState = { name = "", box = nil }
@@ -11132,8 +11334,56 @@ function Binds.notice(msg)
     task.delay(1.7, function() if Binds.flash == f then Binds.flash = nil end; if f.Parent then f:Destroy() end end)
 end
 
+-- ---------------------------------------------------------------- the kill bind (Options > Keybinds > Do Not Press)
+-- Kills your own character and nothing else. It is registered like a toggle, so it gets the same keybind and on-screen button as the rest,
+-- and it is saved in configs with them. A key press (or the on-screen button) only warns the first time; press again within 3 seconds to do it.
+Binds.kill = { armedUntil = 0 }
+Binds.killId = "binds|Do Not Press|Kill Me"
+do
+local Kill, KILL_ID = Binds.kill, Binds.killId
+
+function Kill.run()
+    local ch = LP.Character
+    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    pcall(function() hum.Health = 0 end)
+    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Dead) end)
+    pcall(function() ch:BreakJoints() end)
+    return true
+end
+
+function Kill.press()
+    local now = os.clock()
+    if now <= Kill.armedUntil then
+        Kill.armedUntil = 0
+        Binds.notice(Kill.run() and "You asked for it." or "There is no character to kill right now.")
+        return
+    end
+    Kill.armedUntil = now + 3
+    Binds.notice("WARNING: this kills your character. Press again within 3 seconds.")
+end
+
+Binds.reg[KILL_ID] = { label = "Kill Me", tab = "binds", c = { get = function() return false end, set = function() end }, action = Kill.press }
+
+end
+
+-- ids that changed when things moved between tabs or sections, so binds saved before then still find their toggle
+Binds.renames = {
+    { "^movement|Animation Sync|", "animations|Animation Sync|" },
+    { "^esp|Shop Items|", "esp|Items|" },
+    { "^esp|Ichor Puddles|Different Color For Finn's Puddle$", "esp|Ichor Puddles|Different Color For Twisted Finn's Ichor Puddles" },
+}
+function Binds.fixId(id)
+    for _, r in ipairs(Binds.renames) do
+        local n, k = id:gsub(r[1], r[2])
+        if k > 0 then return n end
+    end
+    return id
+end
+
 function Binds.flip(id)
     local e = Binds.resolve(id)
+    if e and e.action then pcall(e.action); return end      -- not a toggle: a one-off action (the kill bind)
     local label = (e and e.label) or (Binds.map[id] and Binds.map[id].label) or "That toggle"
     if not e then Binds.notice(label .. " isn't available right now."); return end
     local ok, cur = pcall(e.c.get)
@@ -11345,6 +11595,7 @@ Features.binds = {
         local map = {}
         for _, e in ipairs(d.list) do
             if type(e) == "table" and type(e.id) == "string" and e.id ~= "" then
+                e.id = Binds.fixId(e.id)
                 local m = { label = tostring(e.label or e.id) }
                 if type(e.key) == "string" and e.key ~= "" and pcall(function() return Enum.KeyCode[e.key] end) then m.key = e.key end
                 if type(e.x) == "number" and type(e.y) == "number" then m.btn = { x = math.clamp(e.x, 0.02, 0.98), y = math.clamp(e.y, 0.02, 0.98) } end
@@ -11445,6 +11696,26 @@ local function buildBindsPage()
             end },
         } },
     } }
+
+    -- the big red button, last in the rail
+    local KILL_ID, Kill = Binds.killId, Binds.kill
+    local km = Binds.map[KILL_ID]
+    secs[#secs + 1] = { title = "Do Not Press", controls = {
+        { t = "text", text = "Exactly one thing happens when you press this: your character dies. It warns you first. Press once to arm it, then press again within 3 seconds to go through with it. The kill keybind below works the same way, and it can have an on-screen button like any toggle." },
+        { t = "killbutton", label = "BIG RED BUTTON THAT KILLS YOU", armedLabel = "ARE YOU SURE? PRESS AGAIN",
+            warn = "This will kill your character. Press the button again within 3 seconds to confirm.",
+            fn = function() if not Kill.run() then toast("There is no character to kill right now.", "err") end end },
+        { t = "keybind", text = "Kill Keybind", get = function() local m = Binds.map[KILL_ID]; return m and m.key or "None" end,
+            set = function(name)
+                if name == S.keybind then toast(name .. " is the key that shows and hides the hub. Pick another.", "err"); return end
+                bindEntry(KILL_ID).key = name
+                if UI.visible then pcall(refreshPage) end
+            end },
+        { t = "buttons", items = {
+            { label = (km and km.btn) and "Remove Button" or "Add Button", fn = function() if km and km.btn then Binds.removeButton(KILL_ID) else Binds.addButton(KILL_ID) end end },
+            { label = "Clear Key", fn = function() Binds.clearKey(KILL_ID) end },
+        } },
+    } }
     return secs
 end
 Binds.buildPage = buildBindsPage
@@ -11461,7 +11732,7 @@ Features.switches = {
             SpeedModifier = Speed.Enabled, InfiniteStamina = Stam.Infinite, AutoRun = Stam.AutoRun,
             Noclip = SP.noclipOn(), Fullbright = SP.fullbrightOn(), HideIchorSplats = SP.hideIchorOn(), Adblocker = SP.adblockOn(),
             AutoDefault = Auto.Default, AutoCircle = Auto.Circle, AutoTreadmill = Auto.Treadmill, AutoSwimmy = Auto.Swimmy, AutoInstant = Auto.Instant,
-            Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled,
+            Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled, Blotspeak = Fun.Blot.Enabled,
         }
     end,
     apply = function(d)
@@ -11484,6 +11755,7 @@ Features.switches = {
             if was and not d.Pursuer then pcall(Fun.Pur.despawn, true) end
         end
         if has("MoreSkillChecks") then Fun.Enabled = d.MoreSkillChecks; Fun.Status = d.MoreSkillChecks and "On" or "Off" end
+        if has("Blotspeak") then Fun.Blot.Set(d.Blotspeak) end
     end,
 }
 Features.customizer = { serialize = function() return Cust.serialize() end, apply = function(d) Cust.apply(d) end }
@@ -11545,19 +11817,33 @@ local SOUND_GROUPS = {
     ["Setups"] = { g = "Setups" },
 }
 
+-- the top tabs. Their sub-tabs are the entries of UI.tabs below that carry the same cat, listed in this order down the side.
+UI.cats = {
+    { id = "gameplay", name = "Gameplay", icon = "automation" },
+    { id = "fun",      name = "Fun",      icon = "fun" },
+    { id = "configs",  name = "Configs",  icon = "configs" },
+    { id = "options",  name = "Options",  icon = "appearance" },
+}
+
 UI.tabs = {
-    { id = "esp",        name = "ESP",          icon = "esp",        build = grouped(buildESPPage, ESP_GROUPS) },
-    { id = "movement",   name = "Movement",     icon = "movement",   build = buildMovementPage },
-    { id = "world",      name = "World",        icon = "world",      build = buildWorldPage },
-    { id = "screen",     name = "Screen",       icon = "esp",        build = buildScreenPage },
-    { id = "automation", name = "Automation",   icon = "automation", build = buildAutomationPage },
-    { id = "fun",        name = "Skill Checks", icon = "fun",        build = grouped(buildFunPage, SKILL_GROUPS) },
-    { id = "pursuer",    name = "Pursuer",      icon = "fun",        build = grouped(buildPursuerPage, PURSUER_GROUPS) },
-    { id = "customizer", name = "Customizer",   icon = "customizer", build = grouped(Cust.build, CUSTOMIZER_GROUPS) },
-    { id = "sound",      name = "Sound",        icon = "fun",        build = grouped(UI.snd.build, SOUND_GROUPS) },   -- icon: reusing "fun" until the skins get a speaker icon
-    { id = "binds",      name = "Keybinds",     icon = "automation", build = grouped(UI.binds.buildPage, {}) },
-    { id = "configs",    name = "Configs",      icon = "configs",    build = buildConfigsPage },
-    { id = "appearance", name = "Appearance",   icon = "appearance", build = buildAppearancePage },
+    -- Gameplay
+    { id = "esp",        name = "ESP",          cat = "gameplay", icon = "esp",        build = grouped(buildESPPage, ESP_GROUPS) },
+    { id = "movement",   name = "Movement",     cat = "gameplay", icon = "movement",   build = buildMovementPage },
+    { id = "world",      name = "World",        cat = "gameplay", icon = "world",      build = buildWorldPage },
+    { id = "screen",     name = "Screen",       cat = "gameplay", icon = "esp",        build = buildScreenPage },
+    { id = "automation", name = "Automation",   cat = "gameplay", icon = "automation", build = buildAutomationPage },
+    -- Fun   (the id "fun" is the Skill Checks page; it is kept so saved keybinds for its toggles still find them)
+    { id = "customizer", name = "Customizer",   cat = "fun",      icon = "customizer", build = grouped(Cust.build, CUSTOMIZER_GROUPS) },
+    { id = "sound",      name = "Sound",        cat = "fun",      icon = "fun",        build = grouped(UI.snd.build, SOUND_GROUPS) },
+    { id = "fun",        name = "Skill Checks", cat = "fun",      icon = "fun",        build = grouped(buildFunPage, SKILL_GROUPS) },
+    { id = "pursuer",    name = "Pursuer",      cat = "fun",      icon = "fun",        build = grouped(buildPursuerPage, PURSUER_GROUPS) },
+    { id = "chat",       name = "Chat",         cat = "fun",      icon = "fun",        build = UI.buildChatPage },
+    { id = "animations", name = "Animations",   cat = "fun",      icon = "fun",        build = UI.buildAnimationsPage },
+    -- Configs
+    { id = "configs",    name = "Configs",      cat = "configs",  icon = "configs",    build = buildConfigsPage },
+    -- Options
+    { id = "appearance", name = "Appearance",   cat = "options",  icon = "appearance", build = buildAppearancePage },
+    { id = "binds",      name = "Keybinds",     cat = "options",  icon = "automation", build = grouped(UI.binds.buildPage, {}) },
 }
 
 end
@@ -11727,26 +12013,28 @@ local function buildDandyChrome()
         end)
     end
 
-    -- tab column
+    -- top tabs
+    local rebuildCats = UI.makeCatBar(Win, UDim2.fromOffset(10, 62), UDim2.new(1, -20, 0, 42), 8, function(bar, ct, sel, sz)
+        return (Button(bar, ct.name, sz, sel and "blue" or "glass", function() UI.setCat(ct.id) end, { size = 20 }))
+    end)
+
+    -- side list (the sub-tabs of the top tab you picked)
     local Side = New("Frame", { BackgroundColor3 = C(15, 15, 15), BackgroundTransparency = 0.3, BorderSizePixel = 0,
-        Position = UDim2.fromOffset(10, 64), Size = UDim2.new(0, 178, 1, -104) }, Win)
+        Position = UDim2.fromOffset(10, 112), Size = UDim2.new(0, 178, 1, -152) }, Win)
     corner(Side, 10); stroke(Side, BLACK, 3, 0)
+    UI.sideFrame = Side
     local tabList = New("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 8),
         Size = UDim2.new(1, -16, 1, -16), ScrollBarThickness = 3, ScrollBarImageColor3 = c.header, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, Side)
     New("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, tabList)
-    local function buildTabs()
-        clearGui(tabList)
-        for i, tb in ipairs(UI.tabs) do
-            local b = Button(tabList, tb.name, UDim2.new(1, -4, 0, 40), (tb.id == UI.current) and "blue" or "glass", function() setTab(tb.id) end, { size = 17, align = AL, pad = 12 })
-            b.LayoutOrder = i
-        end
-    end
-    buildTabs()
-    UI.onTab = buildTabs
+    local rebuildSubs = UI.makeSubList(tabList, function(list, tb, sel)
+        return (Button(list, tb.name, UDim2.new(1, -4, 0, 40), sel and "blue" or "glass", function() setTab(tb.id) end, { size = 17, align = AL, pad = 12 }))
+    end)
+    rebuildCats(); rebuildSubs()
+    UI.onTab = function() rebuildCats(); rebuildSubs(); UI.applySide() end
 
     -- content (wrapped into the rail + page + pinned pane layout by makePane)
-    Content = New("ScrollingFrame", { Name = "Content", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(198, 64),
-        Size = UDim2.new(1, -208, 1, -104), ScrollBarThickness = 6, ScrollBarImageColor3 = c.header, CanvasSize = UDim2.new(), Active = true,
+    Content = New("ScrollingFrame", { Name = "Content", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(198, 112),
+        Size = UDim2.new(1, -208, 1, -152), ScrollBarThickness = 6, ScrollBarImageColor3 = c.header, CanvasSize = UDim2.new(), Active = true,
         AutomaticCanvasSize = Enum.AutomaticSize.Y }, Win)
     New("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, Content)
     New("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingLeft = UDim.new(0, 4) }, Content)
@@ -11813,28 +12101,30 @@ local function buildAeroChrome()
     xb.ZIndex = 5
     makeDraggable(Title)
 
-    -- sidebar
+    -- top tabs
+    local rebuildCats = UI.makeCatBar(Win, UDim2.fromOffset(12, 52), UDim2.new(1, -24, 0, 34), 8, function(bar, ct, sel, sz)
+        return (Button(bar, ct.name, sz, sel and "blue" or "glass", function() UI.setCat(ct.id) end, { size = 17 }))
+    end)
+
+    -- sidebar (the sub-tabs of the top tab you picked)
     local Side = New("Frame", { BackgroundColor3 = c.panel, BackgroundTransparency = T.panelT, BorderSizePixel = 0,
-        Position = UDim2.fromOffset(12, 54), Size = UDim2.new(0, 150, 1, -92) }, Win)
+        Position = UDim2.fromOffset(12, 92), Size = UDim2.new(0, 150, 1, -130) }, Win)
     corner(Side, 14); stroke(Side, WHITE, 1.5, 0.2)
     New("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0.1, 0.5) }, Side)
-    Label(Side, "Menu", UDim2.fromOffset(14, 8), UDim2.fromOffset(100, 22), { font = F_AERO.bold, size = 17 })
+    UI.sideFrame = Side
+    UI.sideTitle = Label(Side, UI.catName(), UDim2.fromOffset(14, 8), UDim2.fromOffset(120, 22), { font = F_AERO.bold, size = 17 })
     local tabList = New("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 36),
         Size = UDim2.new(1, -16, 1, -44), ScrollBarThickness = 4, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, Side)
     New("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, tabList)
-    local function buildTabs()
-        for _, ch in ipairs(tabList:GetChildren()) do if ch:IsA("GuiObject") then ch:Destroy() end end
-        for i, tb in ipairs(UI.tabs) do
-            local b = Button(tabList, tb.name, UDim2.new(1, 0, 0, 36), (tb.id == UI.current) and "blue" or "glass", function() setTab(tb.id) end, { size = 16 })
-            b.LayoutOrder = i
-        end
-    end
-    buildTabs()
-    UI.onTab = buildTabs
+    local rebuildSubs = UI.makeSubList(tabList, function(list, tb, sel)
+        return (Button(list, tb.name, UDim2.new(1, 0, 0, 36), sel and "blue" or "glass", function() setTab(tb.id) end, { size = 16 }))
+    end)
+    rebuildCats(); rebuildSubs()
+    UI.onTab = function() rebuildCats(); rebuildSubs(); UI.applySide() end
 
     -- content
-    Content = New("ScrollingFrame", { Name = "Content", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(172, 54),
-        Size = UDim2.new(1, -184, 1, -92), ScrollBarThickness = 6, ScrollBarImageColor3 = c.accent, CanvasSize = UDim2.new(),
+    Content = New("ScrollingFrame", { Name = "Content", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(172, 92),
+        Size = UDim2.new(1, -184, 1, -130), ScrollBarThickness = 6, ScrollBarImageColor3 = c.accent, CanvasSize = UDim2.new(),
         AutomaticCanvasSize = Enum.AutomaticSize.Y }, Win)
     New("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, Content)
     New("UIPadding", { PaddingRight = UDim.new(0, 8) }, Content)
@@ -11969,7 +12259,7 @@ local function buildXMBChrome()
     local Cats = New("Frame", { Name = "Cats", BackgroundTransparency = 1, ClipsDescendants = true, Position = UDim2.fromOffset(0, 46),
         Size = UDim2.new(1, 0, 0, 116) }, Win)
     local refs = {}
-    for i, tb in ipairs(UI.tabs) do
+    for i, tb in ipairs(UI.cats) do   -- the crossbar is the top tabs: Gameplay / Fun / Configs / Options
         local f = New("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0),
             Size = UDim2.fromOffset(104, 104) }, Cats)
         local holder = New("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0),
@@ -11978,12 +12268,12 @@ local function buildXMBChrome()
         drawIcon(holder, tb.icon)
         local lb = New("TextLabel", { BackgroundTransparency = 1, Text = tb.name, Font = F_XMB.semi, TextSize = 14, TextColor3 = WHITE,
             Position = UDim2.fromOffset(0, 72), Size = UDim2.new(1, 0, 0, 22) }, f)
-        f.MouseButton1Click:Connect(function() setTab(tb.id) end)
+        f.MouseButton1Click:Connect(function() UI.setCat(tb.id) end)
         refs[i] = { f = f, scale = sc, lb = lb }
     end
     local function layoutCats(anim)
         local si = 1
-        for i, tb in ipairs(UI.tabs) do if tb.id == UI.current then si = i end end
+        for i, tb in ipairs(UI.cats) do if tb.id == UI.curCat then si = i end end
         for i, r in ipairs(refs) do
             local rel = i - si
             local sx = 86 + 112 * math.min(si - 1, 1)   -- leave room for the previous category
@@ -11997,11 +12287,22 @@ local function buildXMBChrome()
         end
     end
     layoutCats(false)
-    UI.onTab = function() layoutCats(true) end
+
+    -- sub-tabs of the picked top tab, listed under the crossbar
+    local Side = New("ScrollingFrame", { Name = "Side", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(40, 172),
+        Size = UDim2.new(0, 142, 1, -212), ScrollBarThickness = 3, ScrollBarImageColor3 = WHITE, CanvasSize = UDim2.new(),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y, Active = true }, Win)
+    New("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, Side)
+    UI.sideFrame = Side
+    local rebuildSubs = UI.makeSubList(Side, function(list, tb, sel)
+        return (Button(list, tb.name, UDim2.new(1, -6, 0, 38), sel and "blue" or nil, function() setTab(tb.id) end, { size = 15, align = AL, pad = 12 }))
+    end)
+    rebuildSubs()
+    UI.onTab = function() layoutCats(true); rebuildSubs(); UI.applySide() end
 
     -- items
-    Content = New("ScrollingFrame", { Name = "Content", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, 40, 0, 172),
-        Size = UDim2.new(1, -80, 1, -212), ScrollBarThickness = 4, ScrollBarImageColor3 = WHITE, CanvasSize = UDim2.new(),
+    Content = New("ScrollingFrame", { Name = "Content", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, 190, 0, 172),
+        Size = UDim2.new(1, -230, 1, -212), ScrollBarThickness = 4, ScrollBarImageColor3 = WHITE, CanvasSize = UDim2.new(),
         AutomaticCanvasSize = Enum.AutomaticSize.Y }, Win)
     New("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, Content)
     New("UIPadding", { PaddingRight = UDim.new(0, 8) }, Content)
@@ -12069,35 +12370,46 @@ local function buildXPChrome()
         Size = UDim2.new(1, -8, 1, -34) }, Win)
     corner(Face, 2)
 
-    -- left task pane
-    local Side = New("Frame", { BackgroundColor3 = WHITE, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 8), Size = UDim2.new(0, 156, 1, -44) }, Face)
+    local link = c.title:Lerp(BLACK, 0.1)
+
+    -- top tabs
+    local rebuildCats = UI.makeCatBar(Face, UDim2.fromOffset(8, 6), UDim2.new(1, -16, 0, 30), 4, function(bar, ct, sel, sz)
+        local b = New("TextButton", { Text = ct.name, Font = sel and F_XP.bold or F_XP.reg, TextSize = 15, TextColor3 = link, AutoButtonColor = false,
+            BackgroundColor3 = sel and WHITE or c.pane:Lerp(WHITE, 0.7), BorderSizePixel = 0, Size = sz }, bar)
+        corner(b, 3)
+        if sel then stroke(b, c.accent, 1, 0) end
+        b.MouseEnter:Connect(function() b.BackgroundColor3 = WHITE end)
+        b.MouseLeave:Connect(function() b.BackgroundColor3 = sel and WHITE or c.pane:Lerp(WHITE, 0.7) end)
+        b.MouseButton1Click:Connect(function() ui("click"); UI.setCat(ct.id) end)
+        return b
+    end)
+
+    -- left task pane (the sub-tabs of the top tab you picked)
+    local Side = New("Frame", { BackgroundColor3 = WHITE, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 42), Size = UDim2.new(0, 156, 1, -78) }, Face)
     corner(Side, 3); grad(Side, c.pane, c.pane:Lerp(BLACK, 0.15), 90)
-    Label(Side, "Categories", UDim2.fromOffset(10, 6), UDim2.new(1, -20, 0, 22), { font = F_XP.bold, size = 14, color = WHITE })
+    UI.sideFrame = Side
+    UI.sideTitle = Label(Side, UI.catName(), UDim2.fromOffset(10, 6), UDim2.new(1, -20, 0, 22), { font = F_XP.bold, size = 14, color = WHITE })
     local tabList = New("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 32),
         Size = UDim2.new(1, -16, 1, -40), ScrollBarThickness = 4, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, Side)
     New("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, tabList)
-    local link = c.title:Lerp(BLACK, 0.1)
-    local function buildTabs()
-        for _, ch in ipairs(tabList:GetChildren()) do if ch:IsA("GuiObject") then ch:Destroy() end end
-        for i, tb in ipairs(UI.tabs) do
-            local sel = tb.id == UI.current
-            local base = sel and WHITE or c.pane:Lerp(WHITE, 0.7)
-            local b = New("TextButton", { Text = tb.name, Font = sel and F_XP.bold or F_XP.reg, TextSize = 14, TextColor3 = link,
-                TextXAlignment = AL, BackgroundColor3 = base, BorderSizePixel = 0, AutoButtonColor = false,
-                Size = UDim2.new(1, 0, 0, 28), LayoutOrder = i }, tabList)
-            corner(b, 3); New("UIPadding", { PaddingLeft = UDim.new(0, 10) }, b)
-            if sel then stroke(b, c.accent, 1, 0) end
-            b.MouseEnter:Connect(function() b.BackgroundColor3 = WHITE end)
-            b.MouseLeave:Connect(function() b.BackgroundColor3 = base end)
-            b.MouseButton1Click:Connect(function() ui("click"); setTab(tb.id) end)
-        end
-    end
-    buildTabs()
-    UI.onTab = buildTabs
+    local rebuildSubs = UI.makeSubList(tabList, function(list, tb, sel)
+        local base = sel and WHITE or c.pane:Lerp(WHITE, 0.7)
+        local b = New("TextButton", { Text = tb.name, Font = sel and F_XP.bold or F_XP.reg, TextSize = 14, TextColor3 = link,
+            TextXAlignment = AL, BackgroundColor3 = base, BorderSizePixel = 0, AutoButtonColor = false,
+            Size = UDim2.new(1, 0, 0, 28) }, list)
+        corner(b, 3); New("UIPadding", { PaddingLeft = UDim.new(0, 10) }, b)
+        if sel then stroke(b, c.accent, 1, 0) end
+        b.MouseEnter:Connect(function() b.BackgroundColor3 = WHITE end)
+        b.MouseLeave:Connect(function() b.BackgroundColor3 = base end)
+        b.MouseButton1Click:Connect(function() ui("click"); setTab(tb.id) end)
+        return b
+    end)
+    rebuildCats(); rebuildSubs()
+    UI.onTab = function() rebuildCats(); rebuildSubs(); UI.applySide() end
 
     -- content (white "list view" with a sunken border)
-    Content = New("ScrollingFrame", { Name = "Content", BackgroundColor3 = WHITE, BorderSizePixel = 0, Position = UDim2.fromOffset(172, 8),
-        Size = UDim2.new(1, -180, 1, -44), ScrollBarThickness = 12, ScrollBarImageColor3 = c.pane, CanvasSize = UDim2.new(),
+    Content = New("ScrollingFrame", { Name = "Content", BackgroundColor3 = WHITE, BorderSizePixel = 0, Position = UDim2.fromOffset(172, 42),
+        Size = UDim2.new(1, -180, 1, -78), ScrollBarThickness = 12, ScrollBarImageColor3 = c.pane, CanvasSize = UDim2.new(),
         AutomaticCanvasSize = Enum.AutomaticSize.Y }, Face)
     corner(Content, 2); stroke(Content, C(127, 157, 185), 1, 0)
     New("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, Content)
@@ -12121,6 +12433,7 @@ function buildGui()
     if gui then pcall(function() gui:Destroy() end) end
     table.clear(rainbowSw); table.clear(liveList)
     gui, Win, Overlay, Content, StatusLbl, Orb, Grip, UIScaleObj, Host, Rail, PinPane = nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil
+    UI.sideFrame, UI.hostBase, UI.sideTitle = nil, nil, nil
     activeDrag, listening = nil, nil
 
     T = makeTokens()
@@ -12135,6 +12448,7 @@ function buildGui()
 
     if T.kind == "dandy" then buildDandyChrome() elseif T.kind == "aero" then buildAeroChrome() elseif T.kind == "xp" then buildXPChrome() else buildXMBChrome() end
     makePane()
+    UI.applySide()
     makeGrip()
     Overlay = New("Frame", { Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 100 }, Win)
     makeOrb()
@@ -12179,9 +12493,9 @@ connect(UIS.InputBegan, function(i, gp)
         -- a toggle was bound to this key; it has been flipped
     elseif S.style == "xmb" and mouseOverWin() and (i.KeyCode == Enum.KeyCode.Left or i.KeyCode == Enum.KeyCode.Right) then
         local idx = 1
-        for n, t in ipairs(UI.tabs) do if t.id == UI.current then idx = n end end
-        idx = math.clamp(idx + (i.KeyCode == Enum.KeyCode.Right and 1 or -1), 1, #UI.tabs)
-        setTab(UI.tabs[idx].id)
+        for n, t in ipairs(UI.cats) do if t.id == UI.curCat then idx = n end end
+        idx = math.clamp(idx + (i.KeyCode == Enum.KeyCode.Right and 1 or -1), 1, #UI.cats)
+        UI.setCat(UI.cats[idx].id)
     end
 end)
 
@@ -12203,6 +12517,7 @@ function Destroy()
     pcall(SP.Unload)
     pcall(Auto.Unload)
     pcall(Cust.Destroy)
+    pcall(Fun.Blot.Unload)
     pcall(UI.snd.Destroy)
     pcall(UI.binds.destroy)
     pcall(function() sndHolder:Destroy() end)
