@@ -6112,7 +6112,6 @@ local function buildESPPage()
         end } } },
     } }
     secs[#secs + 1] = { title = "Toons", controls = { tg("Enabled", cats.Players, "Enabled"), tg("Fill", cats.Players, "Fill"), tg("Highlight Myself", cats.Players, "Self"), cl("Color", cats.Players, "Color", DEF.Categories.Players) } }
-    secs[#secs + 1] = { title = "Twisteds", controls = { tg("Enabled", cats.Twisteds, "Enabled"), tg("Fill", cats.Twisteds, "Fill"), cl("Color", cats.Twisteds, "Color", DEF.Categories.Twisteds) } }
     local ICH_NAMES = { Mine = "Only Mine", All = "Everyone's" }
     local ICH_MODES = { ["Only Mine"] = "Mine", ["Everyone's"] = "All" }
     local ich = cats.Ichorlings
@@ -6129,6 +6128,7 @@ local function buildESPPage()
     end
     ichCtl[#ichCtl + 1] = { t = "text", text = "Ichorlings are the bot-controlled copies of players that live in Workspace.Decoys. Only Mine highlights just yours (found through its Owner). Everyone's highlights all of them, and then you can give the other players' Ichorlings their own color." }
     secs[#secs + 1] = { title = "Ichorlings", controls = ichCtl }
+    secs[#secs + 1] = { title = "Twisteds", controls = { tg("Enabled", cats.Twisteds, "Enabled"), tg("Fill", cats.Twisteds, "Fill"), cl("Color", cats.Twisteds, "Color", DEF.Categories.Twisteds) } }
     secs[#secs + 1] = { title = "Machines", controls = {
         tg("Enabled", cats.Generators, "Enabled"), tg("Fill", cats.Generators, "Fill"),
         tg("Hide Completed Machines", cats.Generators, "HideCompleted"),
@@ -6139,6 +6139,12 @@ local function buildESPPage()
         cl("Quad, 1-3 Workers", cats.Generators.Colors, "QuadSome", DEF.Categories.Generators.Colors), cl("Quad, 4 Workers", cats.Generators.Colors, "QuadFull", DEF.Categories.Generators.Colors),
         { t = "text", text = "Quad machines are the four-slot ones (the game still calls them DualGen). They use their own two colors instead of In Progress: one color while 1 to 3 players are on it, another once all 4 slots are taken. Completed, Connie and Brusha still win over them." },
     } }
+    secs[#secs + 1] = { title = "Elevator", controls = {
+        tg("Enabled", cats.Elevator, "Enabled"), tg("Fill", cats.Elevator, "Fill"), cl("Color", cats.Elevator, "Color", DEF.Categories.Elevator),
+        tg("Highlight Fake Elevator", cats.Elevator, "Fake"), cl("Fake Elevator Color", cats.Elevator, "FakeColor", DEF.Categories.Elevator),
+        { t = "text", text = "Highlights the door of the real elevator. Highlight Fake Elevator also marks the doors of the fake elevators (the Door of a FakeElevator, and the ElevatorDoor of Labs' fake elevator) in their own color, so you can tell them apart."},
+    } }
+
     secs[#secs + 1] = { title = "Twisted Gigi's Stash", controls = { tg("Enabled", cats.GigiStash, "Enabled"), tg("Fill", cats.GigiStash, "Fill"), cl("Color", cats.GigiStash, "Color", DEF.Categories.GigiStash) } }
     local PILLOW_NAMES = { All = "Everyone's", Mine = "Only Mine", Others = "Only Others'" }
     local PILLOW_MODES = { ["Everyone's"] = "All", ["Only Mine"] = "Mine", ["Only Others'"] = "Others" }
@@ -6155,22 +6161,17 @@ local function buildESPPage()
         cl("Twisted Astro's Color", sp, "TwistedColor", DEF.Categories.StarPillows),
         { t = "text", text = "Highlight (Everyone's / Only Mine / Only Others') is for Toon pillows. Twisted Astro's pillows do their own thing, with their own switch and color."},
     } }
-    secs[#secs + 1] = { title = "Bookshelves", controls = { tg("Enabled", cats.Bookshelves, "Enabled"), tg("Fill", cats.Bookshelves, "Fill"), cl("Color", cats.Bookshelves, "Color", DEF.Categories.Bookshelves) } }
-
-    secs[#secs + 1] = { title = "Trick or Treat Doors", controls = {
-        tg("Enabled", cats.Doors, "Enabled"), tg("Fill", cats.Doors, "Fill"), cl("Color", cats.Doors, "Color", DEF.Categories.Doors), tg("Hide Used Doors", cats.Doors, "HideUsed"),
-    } }
-    secs[#secs + 1] = { title = "Elevator", controls = {
-        tg("Enabled", cats.Elevator, "Enabled"), tg("Fill", cats.Elevator, "Fill"), cl("Color", cats.Elevator, "Color", DEF.Categories.Elevator),
-        tg("Highlight Fake Elevator", cats.Elevator, "Fake"), cl("Fake Elevator Color", cats.Elevator, "FakeColor", DEF.Categories.Elevator),
-        { t = "text", text = "Highlights the door of the real elevator. Highlight Fake Elevator also marks the doors of the fake elevators (the Door of a FakeElevator, and the ElevatorDoor of Labs' fake elevator) in their own color, so you can tell them apart."},
-    } }
-
     secs[#secs + 1] = { title = "Glitter Glue Puddle", controls = {
         tg("Enabled", cats.GlitterGlue, "Enabled"), tg("Fill", cats.GlitterGlue, "Fill"), cl("Color", cats.GlitterGlue, "Color", DEF.Categories.GlitterGlue),
         { t = "text", text = "The puddle the Glitter Glue item leaves behind. It isn't an Ichor puddle, and it mostly helps you: standing in it gives +75% Extraction Speed, at the price of Slow I (-15% walk and run speed)." },
     } }
 
+
+    secs[#secs + 1] = { title = "Bookshelves", controls = { tg("Enabled", cats.Bookshelves, "Enabled"), tg("Fill", cats.Bookshelves, "Fill"), cl("Color", cats.Bookshelves, "Color", DEF.Categories.Bookshelves) } }
+
+    secs[#secs + 1] = { title = "Trick or Treat Doors", controls = {
+        tg("Enabled", cats.Doors, "Enabled"), tg("Fill", cats.Doors, "Fill"), cl("Color", cats.Doors, "Color", DEF.Categories.Doors), tg("Hide Used Doors", cats.Doors, "HideUsed"),
+    } }
     local it = cats.Items
     local itemCtl = {
         tg("Enabled", it, "Enabled"), tg("Fill", it, "Fill"),
