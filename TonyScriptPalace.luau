@@ -1,30 +1,37 @@
 --#region header
 --[[
-    TONY SCRIPT PALACE  -  for Dandy's World ONLY  (made for the Real executor)
-    -----------------------------------------------------------------
-    Tabs:   Gameplay  (ESP | Movement | World | Screen | Automation)
-            Fun       (Customizer | Sound | Skill Checks | Pursuer | Chat | Animations)
-            Configs
-            Options   (Appearance | Keybinds)
+    Tony Script Palace
+    Made for Dandy's World only, and for the Real executor.
 
-    Layout: four tabs across the top, and the tab you pick decides which sub-tabs are listed down the left side.
-            Every sub-tab also has a section rail: pick a section and its controls fill the page (no collapsing, no long scrolling).
-            Wide windows also pin the Customizer's 3D preview beside whatever section you are editing.
+    Tabs
+        Gameplay   ESP | Movement | World | Screen | Automation
+        Fun        Customizer | Sound | Skill Checks | Pursuer | Chat | Animations
+        Configs
+        Options    Appearance | Keybinds
 
-    Styles (Appearance tab, the last one you used loads next time):
-            Dandy's World (default)  |  Frutiger Aero (lowercase)  |  XMB / PlayStation  |  Windows XP Luna
-    Dandy's World API Library loads in the background and feeds the live Game Info section on the World tab.
+    How the window works
+        The four tabs sit across the top. Whichever one you pick decides which sub-tabs show up on the left.
+        Every sub-tab has a list of sections beside it. Pick one and its controls fill the page, so there's
+        no scrolling through one giant list. If the window is wide enough, the Customizer's 3D preview gets
+        pinned next to whatever you're editing.
 
-    Window: keybind show/hide (default RightShift, rebind in Appearance), hide button + optional reopen orb, start-hidden option,
-            destroy button, drag the top bar, resize with the bottom-right grip, UI scale slider, fullscreen.
+    Styles (Options > Appearance, the last one you used loads next time)
+        Dandy's World (default) | Frutiger Aero (all lowercase) | XMB / PlayStation | Windows XP Luna
+        The Dandy's World API Library loads in the background and feeds the Game Info section on the World tab.
 
-    Adding a new tab later:
-        1. write a function that returns a list of sections
+    Window stuff
+        Show/hide key (RightShift by default, change it in Appearance), a hide button, an optional orb that
+        brings the window back, start hidden, a destroy button, drag the top bar to move it, drag the
+        bottom-right corner to resize it, a scale slider and fullscreen.
+
+    Adding a tab
+        1. Write a function that returns a list of sections:
            { { title = "...", controls = { {t="toggle", ...}, ... } } }
-        2. add  { id = "mytab", name = "My Tab", cat = "gameplay", build = fn }  to UI.tabs   (cat = one of the ids in UI.cats; list order = side order)
-           (wrap fn in  grouped(fn, { ["Section Title"] = { g = "Rail Group" } })  to group the rail)
-        3. (optional) register save/load for configs:  Features.mytab = { serialize = fn, apply = fn }
-    Write every label in Proper Case - the Aero skin lowercases it automatically.
+        2. Add { id = "mytab", name = "My Tab", cat = "gameplay", build = fn } to UI.tabs.
+           cat is one of the ids in UI.cats, and the list order is the order they show up in.
+           Wrap fn in grouped(fn, { ["Section Title"] = { g = "Rail Group" } }) if you want to group the section list.
+        3. (Optional) To save and load it in configs: Features.mytab = { serialize = fn, apply = fn }
+    Write every label in Proper Case. The Aero style lowercases it for you.
 ]]
 
 local env = (getgenv and getgenv()) or _G
@@ -48,31 +55,27 @@ local function guiParent() return (gethui and try(gethui)) or CoreGui end
 
 --#endregion header
 --#region filesystem
-----------------------------------------------------------------------
--- FILE SYSTEM
-----------------------------------------------------------------------
+-- File system
 local ROOT_DIR   = "TonyScriptPalace"
 local CFG_DIR    = ROOT_DIR .. "/Configs"
 local SETTINGS_F = ROOT_DIR .. "/settings.json"
 
-local function isF(p) return isfile and try(isfile, p) or false end
-local function isD(p) return isfolder and try(isfolder, p) or false end
-local function mkD(p) if makefolder and not isD(p) then pcall(makefolder, p) end end
-local function rdF(p) return readfile and try(readfile, p) or nil end
-local function wrF(p, c) if writefile then return (pcall(writefile, p, c)) end; return false end
-local function lsD(p) return listfiles and try(listfiles, p) or {} end
-local function dlF(p) if delfile then pcall(delfile, p) end end
+local function fileExists(p) return isfile and try(isfile, p) or false end
+local function folderExists(p) return isfolder and try(isfolder, p) or false end
+local function makeDir(p) if makefolder and not folderExists(p) then pcall(makefolder, p) end end
+local function readFile(p) return readfile and try(readfile, p) or nil end
+local function writeFile(p, c) if writefile then return (pcall(writefile, p, c)) end; return false end
+local function listDir(p) return listfiles and try(listfiles, p) or {} end
+local function deleteFile(p) if delfile then pcall(delfile, p) end end
 local function baseName(p) p = tostring(p):gsub("\\", "/"); return p:match("([^/]+)$") or p end
 local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
-local function jenc(t) local ok, r = pcall(HttpService.JSONEncode, HttpService, t); return ok and r or nil end
-local function jdec(s) local ok, r = pcall(HttpService.JSONDecode, HttpService, s); return ok and r or nil end
-mkD(ROOT_DIR); mkD(CFG_DIR)
+local function jsonEncode(t) local ok, r = pcall(HttpService.JSONEncode, HttpService, t); return ok and r or nil end
+local function jsonDecode(s) local ok, r = pcall(HttpService.JSONDecode, HttpService, s); return ok and r or nil end
+makeDir(ROOT_DIR); makeDir(CFG_DIR)
 
 --#endregion filesystem
 --#region colors
-----------------------------------------------------------------------
--- COLOR HELPERS + PRESETS
-----------------------------------------------------------------------
+-- Color helpers + presets
 local C = Color3.fromRGB
 local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
 local RAINBOW = "Rainbow"
@@ -150,9 +153,7 @@ DANDY.presets = {
 
 --#endregion colors
 --#region settings
-----------------------------------------------------------------------
--- UI SETTINGS (persisted)
-----------------------------------------------------------------------
+-- UI settings (persisted)
 local STYLE_LIST = { "dandy", "aero", "xmb", "xp" }   -- dandy = default
 local function validStyle(s) return table.find(STYLE_LIST, s) ~= nil end
 local function defaultWin() return { dandy = { w = 960, h = 600 }, aero = { w = 860, h = 560 }, xmb = { w = 940, h = 580 }, xp = { w = 860, h = 560 } } end
@@ -174,7 +175,7 @@ local function unpackColors(dst, src)
 end
 
 local function saveSettings()
-    local s = jenc({
+    local s = jsonEncode({
         v = 2, style = S.style, keybind = S.keybind, scale = S.scale, fullscreen = S.fullscreen, orb = S.orb, startHidden = S.startHidden,
         autoload = S.autoload, lastConfig = S.lastConfig, pos = S.pos, win = S.win, sounds = S.sounds, sfxVol = S.sfxVol,
         dandy = { preset = S.dandy.preset, colors = packColors(S.dandy.colors) },
@@ -182,11 +183,11 @@ local function saveSettings()
         xmb = { preset = S.xmb.preset, colors = packColors(S.xmb.colors), speed = S.xmb.speed, alpha = S.xmb.alpha },
         xp = { preset = S.xp.preset, colors = packColors(S.xp.colors) },
     })
-    if s then wrF(SETTINGS_F, s) end
+    if s then writeFile(SETTINGS_F, s) end
 end
 
 do -- startup load
-    local s = jdec(rdF(SETTINGS_F) or "")
+    local s = jsonDecode(readFile(SETTINGS_F) or "")
     if type(s) == "table" then
         -- settings saved before v2 remembered Frutiger Aero as the style; the new default is Dandy's World, so those are ignored once
         if s.v == 2 and validStyle(s.style) then S.style = s.style end
@@ -222,9 +223,7 @@ end
 
 --#endregion settings
 --#region esp
-----------------------------------------------------------------------
--- ESP  (ported from DandyESP, Highlight based)
-----------------------------------------------------------------------
+-- ESP (ported from DandyESP, Highlight based)
 local ESP = {}
 local espDirty = true
 local animColors = { Rainbow = C(255, 0, 0), Halloween = MODE_PAIRS.Halloween[1], Christmas = MODE_PAIRS.Christmas[1] }   -- what each animated mode looks like right now
@@ -746,9 +745,7 @@ end
 
 --#endregion esp
 --#region config-system
-----------------------------------------------------------------------
--- CONFIG SYSTEM  (features register serialize/apply; ESP is the first)
-----------------------------------------------------------------------
+-- Config system (features register serialize/apply; ESP is the first)
 local STEP_SIZES = { Units = 1, Stars = 2.5, ["Half Stars"] = 1.25 }
 local Speed = {
     Enabled = false, Mode = "Additive", Step = "Units", Floor = 0, Limit = 0, Cap = false, Auto = true,
@@ -871,7 +868,7 @@ local function cfgPath(n) return CFG_DIR .. "/" .. n .. ".json" end
 local function sanitize(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
 local function listConfigs()
     local out = {}
-    for _, p in ipairs(lsD(CFG_DIR)) do
+    for _, p in ipairs(listDir(CFG_DIR)) do
         local n = baseName(p)
         if n:lower():match("%.json$") then out[#out + 1] = (n:gsub("%.[jJ][sS][oO][nN]$", "")) end
     end
@@ -881,11 +878,11 @@ end
 local function saveConfig(name)
     local data = { version = 1, features = {} }
     for k, f in pairs(Features) do data.features[k] = f.serialize() end
-    local js = jenc(data)
-    return js and wrF(cfgPath(name), js) or false
+    local js = jsonEncode(data)
+    return js and writeFile(cfgPath(name), js) or false
 end
 local function loadConfig(name)
-    local data = jdec(rdF(cfgPath(name)) or "")
+    local data = jsonDecode(readFile(cfgPath(name)) or "")
     if type(data) ~= "table" or type(data.features) ~= "table" then return false end
     for k, f in pairs(Features) do
         if data.features[k] then f.apply(data.features[k]) end
@@ -991,9 +988,7 @@ function Fun.activeCount() local n = 0; local now = os.clock(); for _, e in ipai
 
 --#endregion fun-settings
 --#region movement-engine
-----------------------------------------------------------------------
--- MOVEMENT ENGINE  (reads the player's Stats folder, writes Humanoid.WalkSpeed)
-----------------------------------------------------------------------
+-- Movement engine (reads the player's Stats folder, writes Humanoid.WalkSpeed)
 local SP = { last = nil, learned = {}, peak = {}, flag = nil, lastTrust = nil, onFlagUI = nil }
 do
     local RS = game:GetService("ReplicatedStorage")
@@ -1022,8 +1017,9 @@ do
         end
         return nil
     end
-    -- Invalidate stats cache immediately on character spawn (fixes stale stamina values after revive)
-    LP.CharacterAdded:Connect(function()
+    -- clear the stats cache on respawn, otherwise stamina shows old values after a revive
+    -- (goes through connect() so it gets cleaned up when the script is destroyed)
+    connect(LP.CharacterAdded, function()
         statsCache = nil
         statsRetry = 0
     end)
@@ -3213,7 +3209,7 @@ do
         Fun.Status = "Aborted: " .. reason
     end
     local function startCheck(kind)
-        local ch, stats = charStats()
+        local _, stats = charStats()
         if cur or not stats or not lazy() then return end
         local c = calc(stats)
         local me = { kind = kind, aborted = false }
@@ -3257,7 +3253,7 @@ do
             release((not aborted and outcome) and (outcome == "fail" and 3 or 2) or 0)
             lastEnd = os.clock()
             if not aborted and outcome then
-                local ch2, stats2 = charStats()
+                local _, stats2 = charStats()
                 pcall(applyOutcome, kind, outcome, stats2 or stats)
                 if Fun.Status:sub(1, 7) ~= "Mime Ma" and Fun.Status:sub(1, 7) ~= "Train W" then Fun.Status = "Last check: " .. kind .. " " .. outcome end
             end
@@ -3442,11 +3438,9 @@ local httpReq = request or http_request or (syn and syn.request) or (http and ht
 
 local DIR = ROOT_DIR .. "/Pursuer"
 local IMG_DIR, SND_DIR, CACHE_DIR = DIR .. "/Images", DIR .. "/Sounds", DIR .. "/Cache"
-mkD(DIR); mkD(IMG_DIR); mkD(SND_DIR); mkD(CACHE_DIR)
+makeDir(DIR); makeDir(IMG_DIR); makeDir(SND_DIR); makeDir(CACHE_DIR)
 
-----------------------------------------------------------------------
--- SETTINGS
-----------------------------------------------------------------------
+-- Settings
 local LISTS = {
     ImageMode = { "Static", "Sprite Sheet", "Frame List" },
     Billboard = { "Y Only", "Full", "Off" },
@@ -3528,9 +3522,7 @@ Features.pursuer = {
     end,
 }
 
-----------------------------------------------------------------------
--- ASSET SOURCES  (rbxassetid / link / file in TonyScriptPalace/Pursuer/Images or /Sounds)
-----------------------------------------------------------------------
+-- Asset sources (rbxassetid / link / file in TonyScriptPalace/Pursuer/Images or /Sounds)
 local IMG_EXT = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
 local SND_EXT = { mp3 = true, ogg = true, wav = true, flac = true }
 local memo = {}
@@ -3587,16 +3579,16 @@ end
 local function cachedFile(key)
     for _, e in ipairs({ "png", "jpg", "webp", "bmp", "mp3", "ogg", "wav", "flac" }) do
         local p = CACHE_DIR .. "/" .. key .. "." .. e
-        if isF(p) then return p end
+        if fileExists(p) then return p end
     end
 end
 local function findFile(kind, name)
     name = tostring(name):gsub("\\", "/")
-    if isF(name) then return name end
+    if fileExists(name) then return name end
     local dir = (kind == "img") and IMG_DIR or SND_DIR
-    if isF(dir .. "/" .. name) then return dir .. "/" .. name end
+    if fileExists(dir .. "/" .. name) then return dir .. "/" .. name end
     local ln = name:lower():gsub("^.*/", "")
-    for _, p in ipairs(lsD(dir)) do
+    for _, p in ipairs(listDir(dir)) do
         local n = baseName(p):lower()
         if n == ln or (n:gsub("%.%w+$", "")) == ln then return dir .. "/" .. baseName(p) end
     end
@@ -3604,7 +3596,7 @@ end
 function P.listFiles(kind)
     local dir, okExt = (kind == "img") and IMG_DIR or SND_DIR, (kind == "img") and IMG_EXT or SND_EXT
     local out = {}
-    for _, p in ipairs(lsD(dir)) do
+    for _, p in ipairs(listDir(dir)) do
         local n = baseName(p)
         local e = n:match("%.(%w+)$")
         if e and okExt[e:lower()] then out[#out + 1] = n end
@@ -3640,7 +3632,7 @@ local function resolve(kind, src, cb)
                 if ext == "m4a" then return cb(nil, "m4a isn't supported by Roblox. Convert it to mp3 or ogg.") end
                 if not ext then return cb(nil, "Unrecognised file type.") end
                 path = CACHE_DIR .. "/" .. key .. "." .. ext
-                if not wrF(path, body) then return cb(nil, "Couldn't write the cache file.") end
+                if not writeFile(path, body) then return cb(nil, "Couldn't write the cache file.") end
             end
         else
             path = findFile(kind, src)
@@ -3652,9 +3644,7 @@ local function resolve(kind, src, cb)
 end
 P.resolve = resolve
 
-----------------------------------------------------------------------
--- IMAGE (single picture, sprite sheet or list of frames)
-----------------------------------------------------------------------
+-- Image (single picture, sprite sheet or list of frames)
 local img = { key = nil, tok = 0, list = {}, err = nil, busy = false }
 function P.imageState()
     local key = Cfg.ImageMode .. "|" .. Cfg.ImageSrc .. "|" .. Cfg.FrameList
@@ -3754,9 +3744,7 @@ function P.paintSprite(sp, t, alpha)
     return true
 end
 
-----------------------------------------------------------------------
--- STATE
-----------------------------------------------------------------------
+-- State
 -- phase: off | waiting | flash | chase | dead | fading | gone
 local E = {
     phase = "off", alpha = 0, pos = Vector3.zero, prev = Vector3.zero, face = Vector3.new(0, 0, 1),
@@ -3839,9 +3827,7 @@ local function refreshFilter()
     rp.FilterDescendantsInstances = list
 end
 
-----------------------------------------------------------------------
--- SOUNDS
-----------------------------------------------------------------------
+-- Sounds
 local function playOnce(kind, src, vol)
     resolve("snd", src, function(a)
         if not a or not alive or not E.folder then return end
@@ -3885,9 +3871,7 @@ local function updateMusic()
     end
 end
 
-----------------------------------------------------------------------
--- BODY (an invisible part carrying the picture on a SurfaceGui, so walls hide it like any other object)
-----------------------------------------------------------------------
+-- Body (an invisible part carrying the picture on a SurfaceGui, so walls hide it like any other object)
 local function makeBody()
     local part = Instance.new("Part")
     part.Name = "PursuerBody"; part.Anchored = true; part.CanCollide = false; part.CanTouch = false; part.CanQuery = false
@@ -3984,9 +3968,7 @@ local function afterimage()
     end)
 end
 
-----------------------------------------------------------------------
--- FLOOR TRACKING (the elevator opens, you walk out, it closes)
-----------------------------------------------------------------------
+-- Floor tracking (the elevator opens, you walk out, it closes)
 local function elevatorOpen()
     local el = Workspace:FindFirstChild("Elevators")
     if not el then return false end
@@ -4033,9 +4015,7 @@ local function avoidElevator()
     end
 end
 
-----------------------------------------------------------------------
--- MOVEMENT
-----------------------------------------------------------------------
+-- Movement
 -- speed while you are extracting (choosing a mode here replaces the pause)
 local function decodeAdjust(spd)
     if not E.decoding or spd <= 0 then return spd end      -- a pursuer that is standing still (stops near you) stays still
@@ -4298,11 +4278,9 @@ local function setCounted(want)
     end
 end
 
-----------------------------------------------------------------------
--- SPAWN / DESPAWN
-----------------------------------------------------------------------
+-- Spawn / despawn
 function P.spawn(force)
-    local ch, hrp, hum, stats, myFeet = me()
+    local _, hrp, _, _, myFeet = me()
     if not hrp then return false end
     ensureFolder(); refreshFilter()
     killBody()
@@ -4333,9 +4311,7 @@ local function beginChase(t)
     E.stuckT, E.stuckPos = t, E.pos
 end
 
-----------------------------------------------------------------------
--- TIMER HUD (like the Pizza Time bar)
-----------------------------------------------------------------------
+-- Timer hud (like the Pizza Time bar)
 local hud
 local function hudDestroy() if hud then pcall(function() hud.gui:Destroy() end); hud = nil end end
 local function hudUpdate(show, text, frac, urgent)
@@ -4365,9 +4341,7 @@ local function fmtTime(s)
     return string.format("%d:%02d", math.floor(s / 60), s % 60)
 end
 
-----------------------------------------------------------------------
--- MAIN LOOP
-----------------------------------------------------------------------
+-- Main loop
 local BIND = "TSP_Pursuer"
 local function step(dt)
     if not alive then return end
@@ -4494,19 +4468,17 @@ end
 function P.active() return E.phase == "flash" or E.phase == "chase" or E.phase == "dead" or E.phase == "fading" end
 P.say = function() end      -- the page sets this to the hub's toast
 
-----------------------------------------------------------------------
--- SAVED PURSUERS (TonyScriptPalace/Pursuer/Presets/<name>.json)
-----------------------------------------------------------------------
+-- Saved pursuers (TonyScriptPalace/Pursuer/Presets/<name>.json)
 local PRESET_DIR = DIR .. "/Presets"
-mkD(PRESET_DIR)
+makeDir(PRESET_DIR)
 P.presetName = ""
 local function presetClean(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
 local function presetPath(n) return PRESET_DIR .. "/" .. presetClean(n) .. ".json" end
 function P.presetClean(n) return presetClean(n) end
-function P.presetExists(n) n = presetClean(n); return n ~= "" and isF(presetPath(n)) end
+function P.presetExists(n) n = presetClean(n); return n ~= "" and fileExists(presetPath(n)) end
 function P.listPresets()
     local out = {}
-    for _, f in ipairs(lsD(PRESET_DIR)) do
+    for _, f in ipairs(listDir(PRESET_DIR)) do
         local n = baseName(f)
         if n:lower():sub(-5) == ".json" then out[#out + 1] = n:sub(1, -6) end
     end
@@ -4517,16 +4489,16 @@ function P.savePreset(n)
     n = presetClean(n)
     if n == "" then return false, "Type a name first." end
     if not writefile then return false, "This executor can't write files." end
-    local json = jenc({ Format = 1, Name = n, Settings = Features.pursuer.serialize() })
+    local json = jsonEncode({ Format = 1, Name = n, Settings = Features.pursuer.serialize() })
     if not json then return false, "Couldn't encode the settings." end
-    if not wrF(presetPath(n), json) then return false, "Couldn't write the file." end
+    if not writeFile(presetPath(n), json) then return false, "Couldn't write the file." end
     return true, n
 end
 function P.loadPreset(n)
     n = presetClean(n)
     if n == "" then return false, "Pick a saved pursuer first." end
-    local raw = isF(presetPath(n)) and rdF(presetPath(n))
-    local data = raw and jdec(raw)
+    local raw = fileExists(presetPath(n)) and readFile(presetPath(n))
+    local data = raw and jsonDecode(raw)
     if type(data) ~= "table" or type(data.Settings) ~= "table" then return false, "Couldn't read '" .. n .. "'." end
     Features.pursuer.apply(data.Settings)
     P.reload()
@@ -4535,7 +4507,7 @@ end
 function P.deletePreset(n)
     n = presetClean(n)
     if not P.presetExists(n) then return false, "No saved pursuer called '" .. n .. "'." end
-    dlF(presetPath(n))
+    deleteFile(presetPath(n))
     return true, n
 end
 
@@ -4730,9 +4702,7 @@ end
 
 --#endregion ctrllock-engine
 --#region ui-core
-----------------------------------------------------------------------
--- UI CORE
-----------------------------------------------------------------------
+-- UI core
 local UI = { tabs = {}, cats = {}, current = "esp", curCat = "gameplay", catSel = {}, visible = not S.startHidden, sel = {} }   -- sel[tab id] = key of the section picked in that tab. cats = the top tabs, tabs = the sub-tabs listed down the side (tab.cat says which top tab they belong to), catSel[cat id] = the sub-tab last open in that top tab
 local T                                   -- active style tokens
 local gui, Win, Overlay, Content, StatusLbl, Orb, Grip, UIScaleObj, Host, Rail, PinPane
@@ -4835,9 +4805,7 @@ end
 
 --#endregion ui-core
 --#region ui-sounds
-----------------------------------------------------------------------
--- UI SOUNDS  (each skin has its own set; toggle + volume in Appearance)
-----------------------------------------------------------------------
+-- UI sounds (each skin has its own set; toggle + volume in Appearance)
 local sndHolder = Instance.new("Folder")
 sndHolder.Name = "TonyScriptPalaceSounds"
 sndHolder.Parent = guiParent()
@@ -4961,7 +4929,7 @@ local XP_SOUND_URL  = "https://file.garden/aRURJecPmmjLUziC/Windows%20XP%20Sound
 task.spawn(function()
     local getAsset = env.getcustomasset or env.getsynasset
     if not (getAsset and writefile) then return end
-    mkD(SND_DIR)
+    makeDir(SND_DIR)
     local function download(url)
         local req = env.request or env.http_request
         if req then
@@ -4980,11 +4948,11 @@ task.spawn(function()
                 local cache = (style == "xp") and ("xp_" .. file:lower():gsub("[^%w%.]+", "_")) or file
                 local url = (style == "xp") and (XP_SOUND_URL .. file:gsub(" ", "%%20")) or (XMB_SOUND_URL .. file)
                 local path = SND_DIR .. "/" .. cache
-                if not isF(path) then
+                if not fileExists(path) then
                     local body = download(url)
-                    if body and body:sub(1, 4) == "RIFF" then wrF(path, body) end   -- only keep real .wav data
+                    if body and body:sub(1, 4) == "RIFF" then writeFile(path, body) end   -- only keep real .wav data
                 end
-                if isF(path) then
+                if fileExists(path) then
                     local ok, id = pcall(getAsset, path)
                     if ok and id and alive then
                         uiSnd[style][name].SoundId = id
@@ -4998,9 +4966,7 @@ end)
 
 --#endregion ui-sounds
 --#region widgets
-----------------------------------------------------------------------
--- WIDGETS (shared by both skins, drawn from tokens)
-----------------------------------------------------------------------
+-- Widgets (shared by both skins, drawn from tokens)
 local function Label(parent, text, pos, size, o)
     o = o or {}
     return New("TextLabel", {
@@ -5430,9 +5396,7 @@ end
 
 --#endregion widgets
 --#region row-builders
-----------------------------------------------------------------------
--- ROW BUILDERS  (one per control type)
-----------------------------------------------------------------------
+-- Row builders (one per control type)
 local function padX() return (T.kind == "xmb" and 42) or (T.kind == "dandy" and 12) or 6 end
 
 local function rowFor(parent, order, h)
@@ -6215,9 +6179,7 @@ end
 
 --#endregion libs
 --#region page-esp
-----------------------------------------------------------------------
--- PAGES
-----------------------------------------------------------------------
+-- Pages
 local ITEM_LABELS = { Gumball = "Gumballs", BonBon = "BonBon", ChristmasCookie = "ChristmasCookie", DandyCorn = "DandyCorn", DandyEasterEggs = "DandyEasterEggs", BallOfWax = "BallOfWax" }   -- internal name -> shown name (anything else gets spaces put in: AlarmClock -> Alarm Clock)
 local function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) end
 
@@ -6276,7 +6238,7 @@ local function buildESPPage()
         ichCtl[#ichCtl + 1] = tg("Different Color For Others' Ichorlings", ich, "OtherDiff")
         ichCtl[#ichCtl + 1] = cl("Others' Ichorlings Color", ich, "OtherColor", DEF.Categories.Ichorlings)
     end
-    ichCtl[#ichCtl + 1] = { t = "text", text = "Ichorlings are the bot-controlled copies of players that live in Workspace.Decoys. Only Mine highlights just yours (found through its Owner). Everyone's highlights all of them, and then you can give the other players' Ichorlings their own color." }
+    ichCtl[#ichCtl + 1] = { t = "text", text = "Ichorlings are the bot copies of players that show up during a run. Only Mine highlights yours. Everyone's highlights all of them, and then you can give other players' Ichorlings their own color." }
     secs[#secs + 1] = { title = "Ichorlings", controls = ichCtl }
     secs[#secs + 1] = { title = "Twisteds", controls = { tg("Enabled", cats.Twisteds, "Enabled"), tg("Fill", cats.Twisteds, "Fill"), cl("Color", cats.Twisteds, "Color", DEF.Categories.Twisteds) } }
     secs[#secs + 1] = { title = "Machines", controls = {
@@ -6287,12 +6249,12 @@ local function buildESPPage()
         tg("Color Brusha Debuffed Machines", cats.Generators, "Brusha"), cl("Brusha Debuffed", cats.Generators.Colors, "Brusha", DEF.Categories.Generators.Colors),
         tg("Color Duo Machines With One Worker", cats.Generators, "DuoOne"), cl("Duo, One Worker", cats.Generators.Colors, "DuoOne", DEF.Categories.Generators.Colors),
         cl("Quad, 1-3 Workers", cats.Generators.Colors, "QuadSome", DEF.Categories.Generators.Colors), cl("Quad, 4 Workers", cats.Generators.Colors, "QuadFull", DEF.Categories.Generators.Colors),
-        { t = "text", text = "Quad machines are the four-slot ones (the game still calls them DualGen). They use their own two colors instead of In Progress: one color while 1 to 3 players are on it, another once all 4 slots are taken. Completed, Connie and Brusha still win over them." },
+        { t = "text", text = "Quad machines are the 4-slot ones (the game calls them DualGen, don't ask). They get their own two colors instead of In Progress: one while 1 to 3 players are on it, another once all 4 slots are full. Completed, Connie and Brusha colors still win over these." },
     } }
     secs[#secs + 1] = { title = "Elevator", controls = {
         tg("Enabled", cats.Elevator, "Enabled"), tg("Fill", cats.Elevator, "Fill"), cl("Color", cats.Elevator, "Color", DEF.Categories.Elevator),
         tg("Highlight Fake Elevator", cats.Elevator, "Fake"), cl("Fake Elevator Color", cats.Elevator, "FakeColor", DEF.Categories.Elevator),
-        { t = "text", text = "Highlights the door of the real elevator. Highlight Fake Elevator also marks the doors of the fake elevators (the Door of a FakeElevator, and the ElevatorDoor of Labs' fake elevator) in their own color, so you can tell them apart."},
+        { t = "text", text = "Highlights the door of the real elevator. Highlight Fake Elevator marks the fake elevator doors too, in their own color, so you can tell which is which."},
     } }
 
     secs[#secs + 1] = { title = "Twisted Gigi's Stash", controls = { tg("Enabled", cats.GigiStash, "Enabled"), tg("Fill", cats.GigiStash, "Fill"), cl("Color", cats.GigiStash, "Color", DEF.Categories.GigiStash) } }
@@ -6309,11 +6271,11 @@ local function buildESPPage()
         cl("Others' Color", sp, "OtherColor", DEF.Categories.StarPillows),
         tg("Show Twisted Astro's Pillows", sp, "ShowTwisted"),
         cl("Twisted Astro's Color", sp, "TwistedColor", DEF.Categories.StarPillows),
-        { t = "text", text = "Highlight (Everyone's / Only Mine / Only Others') is for Toon pillows. Twisted Astro's pillows do their own thing, with their own switch and color."},
+        { t = "text", text = "Highlight (Everyone's / Only Mine / Only Others') is for Toon pillows. Twisted Astro's pillows have their own switch and color."},
     } }
     secs[#secs + 1] = { title = "Glitter Glue Puddle", controls = {
         tg("Enabled", cats.GlitterGlue, "Enabled"), tg("Fill", cats.GlitterGlue, "Fill"), cl("Color", cats.GlitterGlue, "Color", DEF.Categories.GlitterGlue),
-        { t = "text", text = "The puddle the Glitter Glue item leaves behind. It isn't an Ichor puddle, and it mostly helps you: standing in it gives +75% Extraction Speed, at the price of Slow I (-15% walk and run speed)." },
+        { t = "text", text = "The puddle the Glitter Glue item leaves behind. It's not an Ichor puddle, and it's actually good for you: you extract 75% faster while standing in it, but you're slowed down by 15%." },
     } }
 
 
@@ -6349,12 +6311,12 @@ local function buildESPPage()
             shopCtl[#shopCtl + 1] = tg("Normal Item Colors When I Have Enough", it, "ShopAffordNormal")
             shopCtl[#shopCtl + 1] = tg("Only Highlight When I Have Enough", it, "ShopAffordOnly")
         end
-        shopCtl[#shopCtl + 1] = { t = "text", text = "Shop items are the models in the elevator shop's Slot1, Slot2 and Slot3. Like Normal Items uses the same colors as that item in the rooms (Per-Item Colors and hidden items apply). By Tapes compares each item's Cost with your Tapes (SurvivalPoints): one color when you can afford it, another when you can't. Normal Item Colors When I Have Enough shows affordable items in their normal item color instead, and Only Highlight When I Have Enough hides the ones you can't afford. If the price or your Tapes can't be read, the item keeps its normal color."}
+        shopCtl[#shopCtl + 1] = { t = "text", text = "Shop items are the things for sale in the elevator shop. Like Normal Items uses the same colors the item has in the rooms. By Tapes checks each item's price against your Tapes: one color if you can afford it, another if you can't. Normal Item Colors When I Have Enough shows the affordable ones in their normal color instead, and Only Highlight When I Have Enough hides the ones you can't afford. If the game won't tell us the price or your Tapes, the item just keeps its normal color."}
     end
     secs[#secs + 1] = { title = "Items", controls = itemCtl }
 
     if it.PerItem then
-        local ic = { { t = "text", text = "Tick the box to show an item, click the swatch to pick its color. Truly cutting-edge technology."} }
+        local ic = { { t = "text", text = "Tick the box to show an item, click the color square to change its color."} }
         for _, name in ipairs(KNOWN_ITEMS) do
             ic[#ic + 1] = { t = "color", text = pretty(name), rainbow = true,
                 enable = { get = function() return not it.Hidden[name] end, set = function(v) it.Hidden[name] = (not v) or nil; espDirty = true end },
@@ -6372,7 +6334,7 @@ local function buildESPPage()
         tg("Enabled", cats.IchorPuddles, "Enabled"), tg("Fill", cats.IchorPuddles, "Fill"), cl("Color", cats.IchorPuddles, "Color", DEF.Categories.IchorPuddles),
         tg("Include Puddle Tops", cats.IchorPuddles, "Tops"),
         tg("Different Color For Twisted Finn's Ichor Puddles", cats.IchorPuddles, "FinnDiff"), cl("Twisted Finn's Ichor Puddle Color", cats.IchorPuddles, "FinnColor", DEF.Categories.IchorPuddles),
-        { t = "text", text = "Puddle Tops are the raised Ichor_Puddle_Top bits that go with the puddles. Turn them off to only mark the puddles themselves. Twisted Finn's Ichor Puddles are the ones Twisted Finn makes (FinnIchorPuddle); with the switch on they use their own color so you can tell them apart."},
+        { t = "text", text = "Puddle Tops are the raised bits that sit on top of puddles. Turn them off to only mark the puddle itself. Twisted Finn's Ichor Puddles are the ones he makes himself. With the switch on they get their own color so you can tell them apart."},
     } }
     return secs
 end
@@ -6400,10 +6362,10 @@ local function buildMovementPage()
             end },
         { t = "toggle", text = "Show Actual Stamina", get = function() return Stam.ShowActual end, set = function(v) Stam.ShowActual = v end },
         { t = "toggle", text = "Show Sprint Icon While Fake Running", get = function() return Stam.Icon end, set = function(v) Stam.Icon = v end },
-        { t = "text", text = "Infinite Stamina is smoke and mirrors. The server still thinks you're out of stamina and walking, so we set your speed to what a real sprint would give you (your Run adjustments below count if the speed modifier is on) and play the run animation. It kicks in when you try to run while empty. Show Actual Stamina gets rid of the fake full bar if you'd rather know the truth."},
+        { t = "text", text = "Infinite Stamina is smoke and mirrors. The server still thinks you're out of stamina, so the script sets your speed to what a real sprint would give you (your Run adjustments below count if the speed modifier is on) and plays the run animation. It only kicks in when you try to run while empty. Show Actual Stamina hides the fake full bar if you'd rather know the truth."},
     } }
     secs[#secs + 1] = { title = "Speed", controls = {
-        { t = "text", text = "Speeding in Dandy's World is not a victimless crime.\n\n   \"Sir, do you know how fast you were walking?\"\n   \"Fast enough to lagback, officer.\"\n\nGo too fast and the anti-cheat yanks you back to where you were. It's not a ban, just the game telling you to chill. The Speed Trust score below drops every time you get flagged, so if it's dropping, ease off."},
+        { t = "text", text = "Go too fast and the game's anti-cheat yanks you back to where you were, like a hall monitor with a grudge. It's not a ban, just annoying. Every time it catches you, your Speed Trust score drops, so if that number keeps falling, slow down."},
         { t = "livetext", get = function() return SP.risk() end },
         { t = "toggle", text = "Enable Speed Modifier", get = function() return Speed.Enabled end,
             set = function(v)
@@ -6430,8 +6392,8 @@ local function buildMovementPage()
             options = function() return { "Additive", "Multiplicative" } end,
             set = function(o) Speed.Mode = o; refreshPage() end },
         { t = "text", text = additive
-            and "Additive: (game speed + your units) x the game's modifier. Only one mode runs at a time."
-            or "Multiplicative: game speed x the game's modifier x your multiplier. Percents stack, so the game's +10% and your +5% make +15.5%, not 15. Only one mode runs at a time."},
+            and "Additive: your units get added to the game's speed, then the game's own modifier is applied on top. Only one mode runs at a time."
+            or "Multiplicative: your percent gets multiplied with the game's speed and modifier. Percents stack on top of each other, so the game's +10% and your +5% make +15.5%, not 15%. Only one mode runs at a time."},
         { t = "slider", text = "Manual Floor (0 = Auto)", min = 0, max = 100, dec = 0, step = 1,
             get = function() return Speed.Floor end, set = function(v) Speed.Floor = v end },
     } }
@@ -6445,7 +6407,7 @@ local function buildMovementPage()
                     for k, v in pairs(Speed.Add) do Speed.Add[k] = math.clamp(math.floor(v / st + 0.5) * st, -100, 100) end
                     refreshPage()
                 end },
-            { t = "text", text = "Units move by 1, Stars by 2.5 (one star) and Half Stars by 1.25. Go negative if you ever want to slow down on purpose."},
+            { t = "text", text = "Units change by 1, Stars by 2.5 (one star) and Half Stars by 1.25. Go negative if you want to slow down on purpose."},
         } }
     end
     local tbl = additive and Speed.Add or Speed.Mul
@@ -6469,7 +6431,7 @@ end
 function UI.buildAnimationsPage()
     local secs = {}
     secs[#secs + 1] = { title = "Animation Sync", controls = {
-        { t = "text", text = "Makes your animations match your speed. Walk and run animations play faster or slower depending on how your humanoid speed compares to your toon's own walk and run speed (from its TowerData module), and exactly that speed means normal. The extraction animation follows your DecodeSpeedModifier, and ability animations follow your speed while you move or your decode speed while you extract. While you extract on a machine your speed is set to your normal walk speed (WalkSpeed x SpeedModifier; the run version if you run on a treadmill) instead of 0, and the speed modifier and skill check bonuses pause until you stop, so the animations stay in sync. Idle is never touched. Visual only, and only on your screen." },
+        { t = "text", text = "Makes your animations match how fast you're actually moving, so you don't look like you're ice skating. Walk and run animations speed up or slow down depending on your speed compared to your toon's normal speed. Extraction and ability animations follow along too. While you extract, your speed is set to your normal walk speed instead of 0 (the run speed if you're on a treadmill), and your speed modifier and skill check bonuses pause until you stop, so everything stays in sync. Idle animations are never touched. It's visual only, and only you see it." },
         { t = "toggle", text = "Sync Animation Speed With Stats", get = function() return Speed.Anim.On end,
             set = function(v) Speed.Anim.On = v; if not v then SP.animRestore() end end },
         { t = "toggle", text = "Ability Animations Follow Speed", get = function() return Speed.Anim.Ability end,
@@ -6483,11 +6445,11 @@ end
 function UI.buildChatPage()
     return {
         { title = "Blotspeak", controls = {
-            { t = "text", text = "Blotspeak changes what you type in the chat box before it is sent. Right now that means your messages go out backwards. Anything that starts with / (a command) is left alone." },
+            { t = "text", text = "Blotspeak changes what you type in chat before it gets sent. Right now that means your messages come out backwards. Anything starting with / (a command) is left alone." },
             { t = "toggle", text = "Enable Blotspeak", get = function() return Fun.Blot.Enabled end,
                 set = function(v) Fun.Blot.Set(v); toast(v and "Blotspeak on. Your chat goes out backwards." or "Blotspeak off. Chat is normal again.", "info") end },
             { t = "livetext", get = function() return Fun.Blot.status() end },
-            { t = "text", text = "Right-click the toggle for a keybind or an on-screen button, so you can flip Blotspeak without opening the hub. It needs an executor with getconnections, and nothing is hooked while it is off." },
+            { t = "text", text = "Right-click the toggle to give it a keybind or an on-screen button, so you can flip it without opening the menu. It needs an executor that supports getconnections, and nothing is hooked while it's off." },
         } },
     }
 end
@@ -6496,7 +6458,7 @@ end
 function UI.buildCameraPage()
     return {
         { title = "Ctrllock", controls = {
-            { t = "text", text = "Moves shift lock from Shift to Left Ctrl, so you can use it without sprinting. Press Left Ctrl to lock the camera behind your character and press it again to unlock. It works like Infinite Yield's ctrllock: it changes the key that shift lock listens for. The game switches shift lock off, so turning this on switches it back on, and turning this off puts the key and that setting back the way they were." },
+            { t = "text", text = "Moves shift lock from Shift to Left Ctrl, so you can use it without sprinting. Press Left Ctrl to lock the camera behind your character, press it again to unlock. Works like Infinite Yield's ctrllock. The game normally turns shift lock off, so this turns it back on, and turning this off puts everything back how it was." },
             { t = "toggle", text = "Ctrllock", get = function() return Fun.Ctrl.On end,
                 set = function(v) Fun.Ctrl.Set(v); toast(v and "Ctrllock on. Left Ctrl toggles shift lock." or "Ctrllock off.", "info") end },
             { t = "livetext", get = function() return Fun.Ctrl.status() end },
@@ -6513,7 +6475,7 @@ local function buildConfigsPage()
         local raw = cfgState.box and cfgState.box.Text or cfgState.name
         return sanitize(raw)
     end
-    local function exists(n) return n ~= "" and isF(cfgPath(n)) end
+    local function exists(n) return n ~= "" and fileExists(cfgPath(n)) end
     local secs = {}
     secs[1] = { title = "Save / Load", controls = {
         { t = "input", text = "Config Name", placeholder = "my config", get = function() return cfgState.name end,
@@ -6539,7 +6501,7 @@ local function buildConfigsPage()
             { label = "Delete", style = "red", confirm = true, fn = function()
                 local n = curName()
                 if not exists(n) then return toast("Pick an existing config to delete.", "ng") end
-                dlF(cfgPath(n))
+                deleteFile(cfgPath(n))
                 if S.lastConfig == n then S.lastConfig = ""; dirty = true end
                 cfgState.name = ""
                 refreshPage(); toast("Deleted config '" .. n .. "'.", "ok")
@@ -6554,7 +6516,7 @@ local function buildConfigsPage()
             empty = "No configs yet. Type a name above and press Save.",
             onSelect = function(n) cfgState.name = n; refreshPage() end },
         { t = "buttons", items = { { label = "Refresh List", fn = function() refreshPage(); toast("Config list refreshed.", "info") end } } },
-        { t = "text", text = "Configs live in workspace/" .. CFG_DIR .. ". They keep all of your settings and every on/off switch: ESP, Movement, World, Automation, Pursuer, Fun, Sound, the Customizer's options and your keybinds and on-screen buttons, so loading one can switch things on straight away. Sound setups, Customizer configs and saved Pursuers are their own libraries: a config remembers which one you were using. Look and feel (the Appearance tab) is saved on its own and is not part of a config."},
+        { t = "text", text = "Configs are saved in workspace/" .. CFG_DIR .. ". They remember all your settings and switches: ESP, Movement, World, Automation, Pursuer, Fun, Sound, the Customizer, your keybinds and on-screen buttons. That means loading one can turn things on right away. Sound setups, Customizer configs and saved Pursuers have their own libraries, and a config just remembers which one you were using. Look and feel (the Appearance tab) is saved separately and isn't part of a config."},
     } }
     return secs
 end
@@ -6617,7 +6579,7 @@ function buildAppearancePage()
                     if ns == "xmb" then uiWhenReady("gameboot") elseif ns == "xp" then uiWhenReady("boot") end
                 end
             end },
-        { t = "text", text = STYLE_BLURB[st] .. " Switching style restarts the GUI, and the last one you used loads next time."},
+        { t = "text", text = STYLE_BLURB[st] .. " Switching styles reloads the menu. The last one you used loads next time."},
     }
     if data then
         iface[#iface + 1] = { t = "dropdown", text = "Preset", get = function() return cur.preset end,
@@ -6681,7 +6643,7 @@ function buildAppearancePage()
     secs[#secs + 1] = { title = "Window", controls = win }
 
     secs[#secs + 1] = { title = "Reset", controls = {
-        { t = "text", text = "Resets window size and position, scale, colors, presets, sounds and the keybind for every style. Your current style stays put."},
+        { t = "text", text = "Resets window size and position, scale, colors, presets, sounds and your keybind for every style. The style you're using stays."},
         { t = "buttons", items = { { label = "Reset Appearance to Default", style = "red", confirm = true, fn = resetAppearance } } },
     } }
     return secs
@@ -6695,7 +6657,7 @@ local worldNames = ""     -- what is typed in the World tab's "Extra Names" box
 local function buildScreenPage()
     return {
         { title = "Adblocker", controls = {
-            { t = "text", text = "Twisted Vee throws fake ad popups onto your screen while she chases you. This blocks them so they never show up at all (and never make their sound). Turn it off and they come back. It only blocks the popups: the slowness her ability gives you still happens."},
+            { t = "text", text = "Twisted Vee throws fake ad popups at you while she chases you. This blocks them so they never show up (and never make their sound). Turn it off and they come back. It only blocks the popups. The slowness her ability gives you still happens."},
             { t = "toggle", text = "Adblocker", get = function() return SP.adblockOn() end,
                 set = function(v)
                     SP.setAdblock(v)
@@ -6704,7 +6666,7 @@ local function buildScreenPage()
                 end },
         } },
         { title = "Ichor Splats", controls = {
-            { t = "text", text = "Stepping in an Ichor puddle splats ink across your whole screen. This hides those splats. Turn it off and they come back."},
+            { t = "text", text = "Stepping in an Ichor puddle splats ink all over your screen. This hides the splats. Turn it off and they're back."},
             { t = "toggle", text = "Hide Ichor Splats", get = function() return SP.hideIchorOn() end,
                 set = function(v) SP.setHideIchor(v); toast(v and "Ichor splats hidden." or "Ichor splats back.", "info") end },
         } },
@@ -6714,7 +6676,7 @@ end
 local function buildWorldPage()
     return {
         { title = "Noclip", controls = {
-            { t = "text", text = "Noclip changes the map, not you. With Everything Except Floors on (the default) it turns off collision for every fixed part in the game, not only the room you are in (the elevator too), so walls, props, machines and doors stop being a problem. It leaves alone anything named Floor or FloorIchor (a part, or everything inside a Floor folder), everything inside a Stairs folder, the Baseplate far below the map that catches you if you fall, and every character (you, other players and Twisteds), so you never fall and your character is never touched. Whatever that setting, anything named NoClip, NoClip_Collider, InvisBlock, InvisWall, CylinderCollider, WallCollider or VisualGuard is turned off too, plus the DoorHitbox, the DoorVisible and the ElevatorDoor model of the fake elevator in Labs (the real elevator is left alone). Smart Floors (needs Everything Except Floors) also keeps solid any part with a flat top level with your feet, even one that is only named Part; it finds them from where you stand, so it follows you between levels. Everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
+            { t = "text", text = "Noclip here works on the map, not on you. With Everything Except Floors on (the default), it turns off collision for walls, props, machines and doors all over the map, not just the room you're in (the elevator too). Floors and stairs stay solid, and so do all characters (you, other players and Twisteds), so you won't fall through the world. The fake elevator in Labs gets turned off too, but the real one is left alone. Smart Floors (needs Everything Except Floors) also keeps solid any flat surface level with your feet, even if the game gave it a weird name. It finds them from where you stand, so it follows you between levels. Everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
             { t = "toggle", text = "Noclip", get = function() return SP.noclipOn() end,
                 set = function(v) SP.setNoclip(v); toast(v and "Noclip on." or "Noclip off, collisions restored.", "info") end },
             { t = "toggle", text = "Everything Except Floors", get = function() return SP.noclipAll() end, set = function(v) SP.setNoclipAll(v) end },
@@ -6723,18 +6685,18 @@ local function buildWorldPage()
                 set = function(v) SP.setNoclipWalls(v) end },
             { t = "input", text = "Extra Names (Comma Separated)", placeholder = "e.g. Wall, WindowFrame", get = function() return worldNames end,
                 set = function(txt, enter) worldNames = tostring(txt or ""); if enter then SP.setNoclipNames(worldNames) end end },
-            { t = "text", text = "Extra Names turns off collision for any part, model or folder with exactly that name, floors included, so think twice before typing something like Floor. Press Enter in the box to apply it."},
+            { t = "text", text = "Extra Names turns off collision for anything with exactly that name, floors included, so maybe don't type Floor unless you enjoy falling. Press Enter in the box to apply it."},
             { t = "readout", text = "Parts Affected", get = function() return tostring(SP.noclipCount()) end },
         } },
         { title = "Fullbright", controls = {
-            { t = "text", text = "Lights up the whole map: the ambient light is raised, shadows are switched off and the fog is pushed so far back you never see it. The room's own lights are left alone, so everything simply becomes easy to see. Turning it off puts back whatever the game had."},
+            { t = "text", text = "Lights up the whole map: raises the ambient light, turns shadows off and pushes the fog so far back you'll never see it. The room's own lights aren't touched, everything just gets easy to see. Turning it off puts back whatever the game had."},
             { t = "toggle", text = "Fullbright", get = function() return SP.fullbrightOn() end,
                 set = function(v) SP.setFullbright(v); toast(v and "Fullbright on." or "Fullbright off.", "info") end },
             { t = "slider", text = "Fullbright Brightness", min = 0, max = 100, dec = 0, step = 1,
                 get = function() return SP.fullbrightLevel() end, set = function(v) SP.setFullbrightLevel(v) end },
         } },
         { title = "Game Info", controls = {
-            { t = "text", text = "Live info from the Dandy's World API Library. It only has anything to say inside a run."},
+            { t = "text", text = "Live info from the Dandy's World API Library. It only has something to say during a run."},
             { t = "readout", text = "Floor", get = apiField(function(a) return a.GetGameInfo("floor") end) },
             { t = "readout", text = "Players Alive", get = apiField(function(a) return a.GetPlayersAlive("number") end) },
             { t = "readout", text = "Machines", get = apiField(function(a)
@@ -6759,7 +6721,7 @@ local function buildAutomationPage()
     end
     local function autoRunControls()           -- built step by step: sliders show in "Number" mode, a fraction box in "Fraction" mode
         local c = {}
-        c[#c + 1] = { t = "text", text = "Holds sprint for you while you work a treadmill machine. It stops running when your stamina drops to the first setting, rests, and starts again when stamina climbs back to the second. Each can be a stamina number or a fraction of your max that you type in yourself (1/2, 3/4, 1/8, 50%, 0.75...). The limits still count with Infinite Stamina on."}
+        c[#c + 1] = { t = "text", text = "Holds sprint for you while you're on a treadmill. It stops running when your stamina drops to the first number, rests, and starts again when stamina climbs back up to the second. Each one can be a stamina number or a fraction of your max (1/2, 3/4, 1/8, 50%, 0.75...). These limits still count when Infinite Stamina is on."}
         c[#c + 1] = { t = "toggle", text = "Auto Run On Treadmill Machines", get = function() return Stam.AutoRun end,
             set = function(v)
                 Stam.AutoRun = v
@@ -6800,13 +6762,13 @@ local function buildAutomationPage()
     end
     return {
         { title = "Auto Skill Checks", controls = {
-            { t = "text", text = "Each toggle taps the skill check for you at the right moment. The green or yellow zone is found from the live on-screen zones, so tiny skill check sizes are no problem. Turn them on before you start a machine."},
+            { t = "text", text = "Each toggle taps the skill check for you at the right moment. It reads the green or yellow zone live off the screen, so tiny skill check sizes aren't a problem. Turn them on before you start a machine."},
             tog("Default Machines", "Default"),
             tog("Circle Machines", "Circle"),
             tog("Treadmill Machines", "Treadmill"),
             tog("Swimmy Barnaby Machines", "Swimmy"),
             { t = "toggle", text = "Snap To Green/Yellow", get = function() return Auto.Snap end, set = function(v) Auto.Snap = v end },
-            { t = "text", text = "Snap To Green/Yellow nudges the marker (the green calibration area on default machines) or the ring (the yellow zone on circle machines) onto the exact middle of that zone right before tapping. Turn it off to only hit when the marker really lands there (it can miss tiny zones at low FPS, so your call)."},
+            { t = "text", text = "Snap To Green/Yellow moves the marker (the green area on default machines) or the ring (the yellow zone on circle machines) to the exact middle of the zone right before tapping. Turn it off and it only hits when the marker really lands there. At low FPS it can miss tiny zones, so your call."},
             { t = "slider", text = "Treadmill Taps Per Second", min = 0, max = 20, dec = 0, step = 1,
                 get = function() return Auto.TapRate end, set = function(v) Auto.TapRate = v end },
         } },
@@ -6820,11 +6782,11 @@ local function buildAutomationPage()
             { t = "toggle", text = "Continuous Coins", get = function() return Auto.SwimmyRapid end, set = function(v) Auto.SwimmyRapid = v end },
             { t = "slider", text = "Continuous Coins Per Second", min = 1, max = 30, dec = 0, step = 1,
                 get = function() return Auto.SwimmyRapidRate end, set = function(v) Auto.SwimmyRapidRate = v end },
-            { t = "text", text = "Pull Coins brings each coin to Barnaby as it approaches. Instant Coins grabs each one the moment it spawns. Coin For Every Seaweed gives you a coin for every seaweed gap Barnaby passes, even the ones that spawned no coin. Continuous Coins keeps collecting non-stop at the rate below. The server may ignore coins that come too fast, so if your progress stops going up, lower the rate. Hiding happens before the game shows an obstacle, so nothing flashes on screen."},
+            { t = "text", text = "Pull Coins brings each coin to Barnaby as it gets close. Instant Coins grabs each one the second it spawns. Coin For Every Seaweed gives you a coin for every seaweed gap Barnaby passes, even if no coin spawned there. Continuous Coins keeps collecting non-stop at the rate below. The server may ignore coins that come in too fast, so if your progress stops going up, lower the rate. Obstacles are hidden before the game shows them, so nothing flashes on screen."},
         } },
         { title = "Auto Run (Treadmill Machines)", controls = autoRunControls() },
         { title = "Instant Calibration Success", controls = {
-            { t = "text", text = "Answers the server's calibration check instantly as a perfect hit (supercomplete) and skips the minigame entirely. The three Affect toggles choose which machines it answers: turn one off to play that kind of machine yourself while the others stay instant."},
+            { t = "text", text = "Answers the server's calibration check instantly with a perfect hit (supercomplete) and skips the minigame entirely. The three Affect toggles choose which machines it works on. Turn one off to play that kind of machine yourself while the others stay instant."},
             tog("Instant Calibration Success", "Instant"),
             { t = "toggle", text = "Great Job Text And Sounds", get = function() return Auto.Feedback end, set = function(v) Auto.Feedback = v end },
             { t = "toggle", text = "Affect Default Machines", get = function() return Auto.InstantKinds.default end, set = function(v) Auto.InstantKinds.default = v end },
@@ -6834,14 +6796,14 @@ local function buildAutomationPage()
                 get = function() return Auto.InstantDelay end, set = function(v) Auto.InstantDelay = v end },
         } },
         { title = "Chase Safety", controls = {
-            { t = "text", text = "Takes you off the machine the instant any Twisted is chasing you. It works mid skill check too, and if you start extracting while a Twisted is chasing you, you are kicked straight off again. Twisted Dessa doesn't count (she always comes for you once and only hurts with her charged attacks, so those are the only time you need to get off), and neither does your own Pursuer." },
+            { t = "text", text = "Gets you off the machine the instant any Twisted starts chasing you. It works mid skill check too, and if you start extracting while a Twisted is chasing you, you get kicked right back off. Twisted Dessa doesn't count (she always comes for you once and only hurts with her charged attacks, so that's the only time you need to get off), and neither does your own Pursuer." },
             { t = "toggle", text = "Force Quit Machine When A Twisted Chases You", get = function() return Auto.ChaseQuit end,
                 set = function(v) Auto.ChaseQuit = v; Auto.Status = v and "Chase Safety on" or "Chase Safety off" end },
         } },
         { title = "Auto Ability", controls = (function()
             local A = Auto.Ability
             local ctl = {
-                { t = "text", text = "Uses your ability for you. Either the moment its cooldown is over, or only when the conditions you pick are met. Twisted Dessa never counts toward a condition. Toggle abilities are never used automatically." },
+                { t = "text", text = "Uses your ability for you, either as soon as it's off cooldown, or only when the conditions you pick are true. Twisted Dessa never counts toward a condition. Toggle abilities are never used automatically." },
                 { t = "toggle", text = "Auto Ability", get = function() return A.On end,
                     set = function(v) A.On = v; A.Status = v and "On" or "Off" end },
                 { t = "dropdown", text = "Use It", get = function() return A.Custom and "Only When Conditions Are Met" or "As Soon As It's Ready" end,
@@ -6854,7 +6816,7 @@ local function buildAutomationPage()
                     set = function(o) A.All = (o == "All Of The Ones I Pick"); refreshPage() end }
                 ctl[#ctl + 1] = { t = "toggle", text = "When Immediately Spotted By A Twisted", get = function() return A.Spotted end, set = function(v) A.Spotted = v end }
                 ctl[#ctl + 1] = { t = "toggle", text = "While A Twisted Is Chasing Me", get = function() return A.Chasing end, set = function(v) A.Chasing = v end }
-                ctl[#ctl + 1] = { t = "text", text = "Immediately spotted: the moment a Twisted starts chasing you (it only stays true for about a second). While chasing: for as long as a Twisted is still chasing you and hasn't lost interest. If you pick nothing, it waits and never fires." }
+                ctl[#ctl + 1] = { t = "text", text = "Immediately spotted: the moment a Twisted starts chasing you (only stays true for about a second). While chasing: for as long as a Twisted is still chasing you and hasn't lost interest. If you pick nothing, it waits forever and never fires." }
             end
             ctl[#ctl + 1] = { t = "readout", text = "Auto Ability", get = function() return A.Status end }
             return ctl
@@ -6976,7 +6938,7 @@ function Fun.Pur.sections()
 
     -- 1. main ---------------------------------------------------------
     local main = {
-        { t = "text", text = "Your own chaser, like Pizzaface, a Nextbot or Dark Esau. You pick the picture and how it behaves. It's a flat picture on an invisible part that only exists on your screen: it kills you by touching you, appears where you stand and flashes before it starts, never goes in the elevator (it fades when you do), and walls hide it. It starts off every time. Put picture and sound files in TonyScriptPalace/Pursuer/Images and /Sounds, or use a link or a Roblox asset number."},
+        { t = "text", text = "Your own chaser, like Pizzaface, a Nextbot or Dark Esau. You pick the picture and how it behaves. It's a flat picture that only exists on your screen. It kills you if it touches you, spawns where you're standing and flashes before it starts chasing, never follows you into the elevator (it fades when you go in), and walls hide it. It starts off every time. Put picture and sound files in TonyScriptPalace/Pursuer/Images and /Sounds, or use a link or a Roblox asset number."},
         { t = "toggle", text = "Pursuer", get = function() return PC.Enabled end,
             set = function(v) PC.Enabled = v; Pur.E.errShown = false; if not v then Pur.despawn(true) end; toast(v and "Pursuer armed. It spawns the way you set below." or "Pursuer off.", "info") end },
         { t = "buttons", items = {
@@ -6988,7 +6950,7 @@ function Fun.Pur.sections()
         } },
         { t = "toggle", text = "Kills You On Touch (Turn Off To Test)", get = function() return PC.Kill end, set = function(v) PC.Kill = v end },
         sl("HitScale", "Touch Size (x)", 0.2, 3, 2, 0.05),
-        { t = "text", text = "How close it has to get to kill you. 1 is about the width of the picture. It can't hurt you while it's still flashing in, so no cheap deaths."},
+        { t = "text", text = "How close it needs to get to kill you. 1 is about the width of the picture. It can't hurt you while it's still flashing in, so no cheap deaths."},
         { t = "readout", text = "Status", get = function() return Pur.status() end },
         { t = "readout", text = "Distance From You", get = function() return Pur.distance() end },
         { t = "readout", text = "Its Speed Now", get = function() return string.format("%.1f studs/s", Pur.currentSpeed()) end },
@@ -6999,7 +6961,7 @@ function Fun.Pur.sections()
     -- 2. look ---------------------------------------------------------
     local look = {
         { t = "pursuerpreview" },
-        { t = "text", text = "The preview shows the picture at its real proportions next to a 2 x 5 stud toon. In the real thing, walls hide it and it flashes while it spawns."},
+        { t = "text", text = "The preview shows the picture at its real proportions next to a 2 x 5 stud toon. In the real thing, walls hide it and it flashes when it spawns."},
         dd("ImageMode", "Picture Type"),
     }
     local mode = PC.ImageMode
@@ -7007,7 +6969,7 @@ function Fun.Pur.sections()
         look[#look + 1] = inp("FrameList", "Frames (Separate With | )", "file1.png | file2.png | https://...")
         look[#look + 1] = pick("img", "FrameList", "Add A File To The List", true)
         look[#look + 1] = sl("FPS", "Frames Per Second", 1, 30, 0, 1)
-        look[#look + 1] = { t = "text", text = "Each frame is its own picture, shown in order and looping. Frames can be files, links or Roblox asset numbers, mixed however you like."}
+        look[#look + 1] = { t = "text", text = "Every frame is its own picture, shown in order and looped. Frames can be files, links or Roblox asset numbers, mixed however you like."}
     else
         look[#look + 1] = inp("ImageSrc", "Picture (File, Link Or Asset Number)", "cat.png or https://... or 123456")
         look[#look + 1] = pick("img", "ImageSrc", "Pick A File")
@@ -7016,14 +6978,14 @@ function Fun.Pur.sections()
             look[#look + 1] = sl("Rows", "Rows", 1, 16, 0, 1)
             look[#look + 1] = sl("FrameCount", "Number Of Frames", 1, 128, 0, 1)
             look[#look + 1] = sl("FPS", "Frames Per Second", 1, 30, 0, 1)
-            look[#look + 1] = { t = "text", text = "A sprite sheet is one picture holding a grid of frames, read left to right, top to bottom. Roblox can't play GIFs, so convert yours (ezgif.com has a GIF to sprite sheet tool), upload the sheet and set the grid here. Number Of Frames is for sheets whose last row isn't full."}
+            look[#look + 1] = { t = "text", text = "A sprite sheet is one big picture made of a grid of frames, read left to right, top to bottom. Roblox can't play GIFs, so convert yours first (ezgif.com has a GIF to sprite sheet tool), upload the sheet and set the grid here. Number Of Frames is for sheets where the last row isn't full."}
         else
-            look[#look + 1] = { t = "text", text = "Roblox doesn't do GIFs. For an animated picture, pick Sprite Sheet or Frame List above."}
+            look[#look + 1] = { t = "text", text = "Roblox doesn't do GIFs. For an animated picture, use Sprite Sheet or Frame List above."}
         end
     end
     look[#look + 1] = { t = "buttons", items = { { label = "Reload Picture", fn = function() Pur.reload(); toast("Reloading the picture...", "info") end } } }
     look[#look + 1] = dd("Billboard", "Facing")
-    look[#look + 1] = { t = "text", text = "Y Only turns to face you but stays upright (like most Nextbots). Full always squares up to your camera, even if you look down at it. Off keeps it flat and turns it to face where it's going; both sides show the picture."}
+    look[#look + 1] = { t = "text", text = "Y Only turns to face you but stays upright (like most Nextbots). Full always faces your camera, even if you look down at it. Off keeps it flat and turns it to face where it's going; both sides show the picture."}
     look[#look + 1] = tg("Pixelated", "Pixelated (Crisp Pixels, No Smoothing)")
     look[#look + 1] = sl("Width", "Width (Studs)", 0.5, 30, 1, 0.5)
     look[#look + 1] = sl("Height", "Height (Studs)", 0.5, 30, 1, 0.5)
@@ -7032,13 +6994,13 @@ function Fun.Pur.sections()
     look[#look + 1] = sl("Opacity", "Opacity", 0.05, 1, 2, 0.05)
     look[#look + 1] = inp("Tint", "Tint (Hex, ffffff = None)", "#ffffff")
     look[#look + 1] = dd("Emissive", "Glows (Ignores Lighting)")
-    look[#look + 1] = { t = "text", text = "Pictures get lit by the room, so they go dark when the lights do. Glows keeps it fully bright: During Blackouts only when the lights are out (the game's own Twisteds do the same), Always, or Off."}
+    look[#look + 1] = { t = "text", text = "Pictures get lit by the room, so they go dark when the lights do. Glows keeps it fully bright: During Blackouts only when the lights are out (the game's own Twisteds do this too), Always, or Off."}
     look[#look + 1] = tg("GlowLight", "Also Lights Up Its Surroundings When It Glows")
 
     -- 3. movement -----------------------------------------------------
     local move = {
         dd("WallMode", "Walls"),
-        { t = "text", text = "Solid: walls and furniture block it, so it uses Roblox's pathfinding to get around (like the Twisteds) and slides along walls. Through Walls: it flies straight at you through everything. Either way it never falls, since a ray under it finds the floor, so it climbs stairs and ramps just fine."},
+        { t = "text", text = "Solid: walls and furniture block it, so it finds its way around like the Twisteds do and slides along walls. Through Walls: it flies straight at you through everything. Either way it never falls, so it climbs stairs and ramps just fine."},
         dd("Vertical", "Up And Down"),
         { t = "text", text = "Follow The Floor: walks on the ground like a Twisted. Match My Height: floats at your height and follows you up fast. Fly Up And Down: rises and falls toward you at a speed you pick, so it can swoop, and a dash lunges straight at you, up or down."},
         sl("Speed", "Speed (Studs Per Second)", 1, 60, 1, 0.5),
@@ -7055,7 +7017,7 @@ function Fun.Pur.sections()
         if sm == "Faster When Far" or sm == "Faster Far, Slower Close" then move[#move + 1] = sl("FarMult", "Speed When Far (x)", 1, 5, 2, 0.1) end
         if sm ~= "Faster When Far" then move[#move + 1] = sl("CloseMult", "Speed When Close (x)", 0, 1, 2, 0.05) end
         if sm == "Slower When Close, Stops Near" then move[#move + 1] = sl("StopDist", "Stops Moving Within (Studs)", 0, 40, 0, 1) end
-        move[#move + 1] = { t = "text", text = "Closer than Close Distance it moves at its closest-up speed, farther than Far Distance at its farthest speed, and it blends smoothly in between. Stops Near makes it halt completely inside the stop distance and start again when you walk away."}
+        move[#move + 1] = { t = "text", text = "When it's closer than Close Distance it moves at its closest speed, and when it's farther than Far Distance it moves at its farthest speed. In between, it blends smoothly. Stops Near makes it stop completely inside the stop distance and start again when you walk away."}
     end
     move[#move + 1] = dd("PanicMode", "Speed In Panic Mode")
     if PC.PanicMode == "Increase By Percent" then move[#move + 1] = sl("PanicPercent", "Faster By (%)", 0, 200, 0, 1)
@@ -7066,19 +7028,19 @@ function Fun.Pur.sections()
         if PC.SuppressMode == "Lower By Percent" then move[#move + 1] = sl("SuppressPercent", "Lowers It By (% Of The Boost)", 0, 100, 0, 1)
         elseif PC.SuppressMode == "Lower By Flat Amount" then move[#move + 1] = sl("SuppressFlat", "Lowers It By (Same Unit As The Boost)", 0, 60, 1, 0.5) end
     end
-    move[#move + 1] = { t = "text", text = "Panic mode only. Percent and flat boosts apply to the dash too, and Set Speed To leaves the dash alone. Suppression is read from the game: with Lower By Percent at 20 the boost shrinks by a fifth (25% becomes 20%, which is what the game does), and Lower By Flat Amount takes that many off instead (percentage points, studs per second, or off the panic speed itself)." }
+    move[#move + 1] = { t = "text", text = "Panic mode only. Percent and flat boosts apply to the dash too, but Set Speed To leaves the dash alone. Suppression is copied from the game: with Lower By Percent at 20, the boost shrinks by a fifth (25% becomes 20%, same as the game). Lower By Flat Amount just takes that many off instead (percentage points, studs per second, or straight off the panic speed, depending on the mode)." }
     move[#move + 1] = tg("PauseDecode", "Pauses While You Extract From A Machine")
     move[#move + 1] = dd("DecodeSlow", "Speed While You Extract")
     if PC.DecodeSlow == "Slow By Flat Amount" then move[#move + 1] = sl("DecodeFlat", "Slower By (Studs Per Second)", 0, 60, 1, 0.5)
     elseif PC.DecodeSlow == "Slow By Percent" then move[#move + 1] = sl("DecodePercent", "Slower By (%)", 0, 100, 0, 1)
     elseif PC.DecodeSlow == "Set Speed To" then move[#move + 1] = sl("DecodeSet", "Speed While Extracting (Studs Per Second)", 0, 60, 1, 0.5) end
-    move[#move + 1] = { t = "text", text = "Instead of pausing, it can keep chasing more slowly while you extract: slower by a flat number of studs per second, slower by a percentage, or locked to one exact speed. It applies to its dash too. Picking one of these replaces the pause above." }
-    move[#move + 1] = { t = "text", text = "Extracting is what the game calls \"decoding\". Paused means it stands still and its dash timer waits too. The Suppression card is read from the game, so the boost drops to 20% once it's been voted."}
+    move[#move + 1] = { t = "text", text = "Instead of pausing, it can keep chasing you more slowly while you extract: slower by a flat number of studs per second, slower by a percentage, or locked to one exact speed. It applies to its dash too. Picking one of these replaces the pause above." }
+    move[#move + 1] = { t = "text", text = "Extracting is what the game calls \"decoding\". Paused means it stands still, and its dash timer waits too. Suppression is copied from the game, so the boost drops to 20% once the card has been voted in."}
 
     -- 4. dash ---------------------------------------------------------
     local dash = {
         tgR("Dash", "Dash (Dark Esau Style)"),
-        { t = "text", text = "Every so often it stops, shakes, then lunges in a straight line at where you were. It keeps going the full distance even if you dodge, and stops at a wall unless it's going Through Walls."},
+        { t = "text", text = "Every so often it stops, shakes, then lunges in a straight line at where you were. It goes the whole distance even if you dodge, and stops at a wall unless it's going Through Walls."},
     }
     if PC.Dash then
         dash[#dash + 1] = sl("DashDistance", "How Far (Studs)", 10, 150, 0, 5)
@@ -7093,7 +7055,7 @@ function Fun.Pur.sections()
     -- 5. spawning -----------------------------------------------------
     local spawn = {
         dd("Trigger", "When It Spawns"),
-        { t = "text", text = "Right Away: as soon as you're out on a floor. When The Elevator Opens: it appears as you step out and starts chasing once the elevator closes. After A Timer: it shows up when you've taken too long, like Pizza Time. Either way it appears on top of you and flashes harmlessly first, and it fades when you get back in the elevator until the next floor."},
+        { t = "text", text = "Right Away: as soon as you're out on a floor. When The Elevator Opens: it shows up as you step out and starts chasing once the elevator closes. After A Timer: it shows up when you've taken too long, like Pizza Time. Either way it appears on top of you and flashes harmlessly first, and it fades when you get back in the elevator until the next floor."},
         sl("FlashTime", "Flash Time Before It Chases (Seconds)", 0, 10, 1, 0.5),
         sl("FlashRate", "Flashes Per Second", 1, 15, 0, 1),
     }
@@ -7111,7 +7073,7 @@ function Fun.Pur.sections()
     }
     if PC.SpotSound then alert[#alert + 1] = dd("SpotVariant", "Which Spotting Sound") end
     alert[#alert + 1] = tg("EyeIcon", "Eye Icon And Chase Counter While It Chases")
-    alert[#alert + 1] = { t = "text", text = "These use the game's own sound and eye icon, so it looks and sounds exactly like a Twisted spotting you. The sound plays the moment it stops flashing and starts chasing. The icon works by adding one to your chase count while it chases: if real Twisteds are chasing you too, the counter goes up by one, then back down when it stops. Anything else that reads your chase count (the game's chase effects, the Twisted count in the Skill Checks settings) will treat it as a chasing Twisted too. The count only changes on your screen, never for the server."}
+    alert[#alert + 1] = { t = "text", text = "These use the game's own sound and eye icon, so it looks and sounds just like a Twisted spotting you. The sound plays the moment it stops flashing and starts chasing. The icon works by adding one to your chase count while it chases, so if real Twisteds are chasing you too, the counter goes up by one, then back down when it stops. Anything else that reads your chase count (the game's chase effects, the Twisted count in the Skill Checks settings) will treat it as a real Twisted too. The count only changes on your screen, never for the server."}
 
     -- 6. sounds -------------------------------------------------------
     local snd = {
@@ -7136,7 +7098,7 @@ function Fun.Pur.sections()
         snd[#snd + 1] = pick("snd", "DeathSrc", "Pick A File")
         snd[#snd + 1] = sl("DeathVol", "Death Sound Volume", 0, 2, 2, 0.05)
     end
-    snd[#snd + 1] = { t = "text", text = "Sounds can be files in TonyScriptPalace/Pursuer/Sounds, direct links (mp3, ogg or wav; Google Drive, Dropbox and GitHub links get converted) or Roblox asset numbers. The music stops when it kills you."}
+    snd[#snd + 1] = { t = "text", text = "Sounds can be files in TonyScriptPalace/Pursuer/Sounds, direct links (mp3, ogg or wav; Google Drive, Dropbox and GitHub links get converted for you) or Roblox asset numbers. The music stops when it kills you."}
 
     -- 7. afterimages --------------------------------------------------
     local after = {
@@ -7174,7 +7136,7 @@ function Fun.Pur.sections()
                 local ok, r = Pur.loadPreset(o)
                 if ok then Pur.presetName = r; refreshPage(); toast("Loaded pursuer '" .. r .. "'.", "ok") else toast(r, "ng") end
             end },
-        { t = "text", text = "A saved pursuer holds every setting in the Pursuer sections except the on/off switch. Files go in TonyScriptPalace/Pursuer/Presets, so you can share them. A pursuer points to its pictures and sounds by file name or link, so keep those in the Images and Sounds folders (or use links or asset numbers) if you want it to look right on someone else's machine."},
+        { t = "text", text = "A saved pursuer remembers every setting in the Pursuer sections except the on/off switch. Files go in TonyScriptPalace/Pursuer/Presets, so you can share them. Pursuers point to their pictures and sounds by file name or link, so if you share one, send the Images and Sounds files too (or use links or asset numbers) so it looks right on the other person's machine."},
     }
 
     return {
@@ -7200,14 +7162,14 @@ local function buildFunPage()
     local function sl(key, text, min, max, dec, step) return { t = "slider", text = text, min = min, max = max, dec = dec, step = step, get = function() return Fun[key] end, set = function(v) Fun[key] = v end } end
 
     local main = {
-        { t = "text", text = "Gives you skill checks while you're NOT working a machine, for when life is just too easy. They use the game's own skill check look and sounds, and never happen while the floor isn't active, while you're in the elevator or while you're extracting. Machines can't be started while one is on screen, and one that's up when you enter the elevator gets cancelled. Extra checks only play out on your screen, nothing goes to the server, so failing one doesn't alert the Twisteds. Starts off every time."},
+        { t = "text", text = "Gives you skill checks while you're NOT working a machine, for when life is just too easy. They use the game's own skill check look and sounds. They never happen while the floor isn't active, while you're in the elevator or while you're extracting. You can't start a machine while one is on screen, and one that's up when you enter the elevator gets cancelled. Extra checks only play out on your screen, nothing goes to the server, so failing one doesn't alert the Twisteds. Starts off every time."},
         { t = "toggle", text = "More Skill Checks (Outside Machines)", get = function() return Fun.Enabled end,
             set = function(v) Fun.Enabled = v; Fun.Status = v and "On" or "Off"; toast(v and "Extra skill checks on." or "Extra skill checks off.", "info") end },
         dd("When", "When Can They Happen", FUN_WHEN),
         tg("CancelWhenSpotted", "Being Spotted Or Hit Cancels Extra Checks (Like The Game)"),
         { t = "text", text = "The game cancels any skill check that isn't a door check when a Twisted spots or hits you. That would make While Chased pointless, so extra checks ignore it by default. Turn this on to get the game's cancel back (it applies from the next check)."},
         tg("Default", "Default Skill Check"), tg("Circle", "Circle Skill Check"), tg("Treadmill", "Treadmill Skill Check"),
-        { t = "text", text = "With more than one type ticked, each check picks at random from the ticked types. It rolls once a second and never twice within the gap below."},
+        { t = "text", text = "If you tick more than one type, each check picks one at random. It rolls once a second and never twice within the gap below."},
         sl("Gap", "Minimum Seconds Between Checks", 0, 15, 1, 0.5),
         { t = "readout", text = "Status", get = function() return Fun.Status end },
     }
@@ -7226,7 +7188,7 @@ local function buildFunPage()
     }
 
     local scale = {
-        { t = "text", text = "Makes the checks harder or easier depending on how many Twisteds there are. Negative numbers do the opposite. Percentages add up per Twisted (5% each with two Twisteds makes 10%), and that total gets multiplied with the game's own size modifier (10% on top of the game's 5% makes 15.5%). Flat size is added to your BoundarySize before the modifiers, and flat speed is added to the marker speed multiplier. Higher speed means a faster marker."},
+        { t = "text", text = "Makes checks harder or easier depending on how many Twisteds there are. Negative numbers do the opposite. Percentages add up per Twisted (5% each with two Twisteds makes 10%), and that total is then multiplied with the game's own size modifier (10% on top of the game's 5% makes 15.5%). Flat size is added to your BoundarySize before the modifiers, and flat speed is added to the marker speed multiplier. Higher speed means a faster marker."},
         dd("TwistedCount", "Count Twisteds", FUN_COUNT),
         tgR("ChanceScale", "Chance Changes For Each Twisted"),
     }
@@ -7250,13 +7212,13 @@ local function buildFunPage()
     end
 
     local tune = {
-        { t = "text", text = "Size: Stat uses your BoundarySize x BoundarySizeModifier, so a Magnifying Glass (which lowers the modifier) shrinks it like it does in machines. Chance and Value: Stat uses SkillCheckChance and SkillCheckValue. Speed: Game uses the game's own speeds (the default check always sweeps in 2 seconds, the circle check's speed comes from your BoundarySize), Skill Check Speed is a just-for-fun option that uses that stat, and Manual lets you set the times yourself."},
+        { t = "text", text = "Size: Stat uses your BoundarySize x BoundarySizeModifier, so a Magnifying Glass (which lowers the modifier) shrinks it like it does in machines. Chance and Value: Stat uses SkillCheckChance and SkillCheckValue. Speed: Game uses the game's own speeds (the default check always sweeps in 2 seconds, and the circle check's speed comes from your BoundarySize). Skill Check Speed is a just-for-fun option that uses that stat, and Manual lets you set the times yourself."},
         dd("SizeMode", "Size", FUN_AUTO, true),
     }
     if Fun.SizeMode == "Manual" then tune[#tune + 1] = sl("Size", "Manual Size (BoundarySize Units)", 0, 1000, 0, 5) end
     tune[#tune + 1] = dd("SpeedMode", "Speed", FUN_SPEED, true)
     if Fun.SpeedMode == "Skill Check Speed" then
-        tune[#tune + 1] = { t = "text", text = "Just-for-fun option: your SkillCheckSpeed x SkillCheckSpeedModifier, compared to the reference below, speeds up the game's normal sweep (2 seconds for the default check, 1.2 for the circle check). At the reference value it's the game's normal speed, double the reference is twice as fast. The game itself never uses this stat for skill checks, so this one is purely us having fun."}
+        tune[#tune + 1] = { t = "text", text = "Just for fun: your SkillCheckSpeed x SkillCheckSpeedModifier, compared to the reference below, speeds up the game's normal sweep (2 seconds for the default check, 1.2 for the circle check). At the reference value it's the game's normal speed, double the reference is twice as fast. The game never uses this stat for skill checks, so this one is purely us having fun."}
         tune[#tune + 1] = sl("SpeedRef", "Reference Stat (Normal Speed)", 1, 10, 1, 0.5)
             end
     if Fun.SpeedMode == "Manual" then
@@ -7282,7 +7244,7 @@ local function buildFunPage()
             rew[#rew + 1] = sl("RewardWalk", "Walk Speed Boost", 0, 20, 1, 0.5)
             rew[#rew + 1] = sl("RewardRun", "Run Speed Boost", 0, 20, 1, 0.5)
         elseif m == "Multiplier" then
-            rew[#rew + 1] = { t = "text", text = "Multiplied with the game's own SpeedModifier / RunSpeedModifier, so 10% on top of the game's 5% gives 15.5%. Percent math, not addition."}
+            rew[#rew + 1] = { t = "text", text = "Multiplied with the game's own SpeedModifier / RunSpeedModifier, so 10% on top of the game's 5% makes 15.5%. It's multiplying, not adding."}
             rew[#rew + 1] = sl("RewardWalkPct", "Walk Speed Multiplier (%)", 0, 100, 0, 1)
             rew[#rew + 1] = sl("RewardRunPct", "Run Speed Multiplier (%)", 0, 100, 0, 1)
         else
@@ -7320,7 +7282,7 @@ local function buildFunPage()
             pen[#pen + 1] = dd("SlowTier", "Slowness Tier", FUN_TIERS, true)
             if Fun.SlowTier == "Custom" then pen[#pen + 1] = sl("SlowPct", "Custom Slowness (%)", 0, 100, 0, 1) end
         else
-            pen[#pen + 1] = { t = "text", text = "Sets your health to 0 the moment you fail. Hurting you for a smaller amount isn't an option, since the server controls your health and won't be talked into it."}
+            pen[#pen + 1] = { t = "text", text = "Sets your health to 0 the moment you fail. Hurting you for a smaller amount isn't possible, since the server controls your health and won't be talked into it."}
         end
         if m ~= "Kill" then pen[#pen + 1] = sl("PenaltyTime", "Penalty Duration (Seconds)", 0.5, 30, 1, 0.5) end
     end
@@ -7332,7 +7294,7 @@ local function buildFunPage()
     if Fun.Stack == "Limit" then stack[#stack + 1] = sl("StackLimit", "Stack Limit", 1, 10, 0, 1) end
 
     local trink = {
-        { t = "text", text = "Magnifying Glass: a white or gold hit gives a slight speed boost (4% of your walk speed while walking, 4% of your run speed while running). Mime Makeup: failing has no penalty, as if penalties were off (its own text and sound always play when it's equipped, like in the game). Train Whistle: immune to the fake Slowness. Only trinkets you actually have equipped count."},
+        { t = "text", text = "Magnifying Glass: a white or gold hit gives a small speed boost (4% of your walk speed while walking, 4% of your run speed while running). Mime Makeup: failing has no penalty, as if penalties were off (its own text and sound always play when it's equipped, like in the game). Train Whistle: immune to the fake Slowness. Only trinkets you actually have equipped count."},
         tgR("Trinkets", "Trinket Interactions"),
     }
     if Fun.Trinkets then trink[#trink + 1] = sl("MagTime", "Magnifying Glass Boost Duration (Seconds)", 0.5, 30, 1, 0.5) end
@@ -7347,7 +7309,7 @@ local function buildFunPage()
         misc[#misc + 1] = sl("TreadmillRunPct", "Run Speed Nerf (%)", 0, 100, 0, 1)
         misc[#misc + 1] = sl("TreadmillTime", "Duration (Seconds)", 0.5, 30, 1, 0.5)
         misc[#misc + 1] = tg("DazedBlock", "Also Block Sprinting While It Lasts")
-        misc[#misc + 1] = { t = "text", text = "The game's own sprint code refuses to start a sprint while a Dazed marker is set, and the wiki doesn't mention that, so this is off by default."}
+        misc[#misc + 1] = { t = "text", text = "The game's own sprint code refuses to start a sprint while a Dazed marker is set, and the wiki never mentions that, so this is off by default."}
     end
     misc[#misc + 1] = tg("Icons", "Show Effect Icons (Right Side And Overhead)")
     misc[#misc + 1] = tg("ShowDazed", "Show Dazed Icon")
@@ -7428,27 +7390,13 @@ local alive = true
 local conns = {}
 local toast = tspToast
 
-----------------------------------------------------------------------
--- FILE SYSTEM
-----------------------------------------------------------------------
+-- File system
 local ROOT_DIR   = ROOT_DIR .. "/CharacterCustomizer"   -- inside the hub's own folder (the hub's ROOT_DIR is "TonyScriptPalace")
 local CFG_DIR    = ROOT_DIR .. "/Configs"
 local LIB_DIR    = ROOT_DIR .. "/Library"
 local CACHE_DIR  = ROOT_DIR .. "/Cache"
 local SETTINGS_F = ROOT_DIR .. "/settings.json"
 
-local function try(f, ...) local ok, a = pcall(f, ...); if ok then return a end; return nil end
-local function isF(p) return isfile and try(isfile, p) or false end
-local function isD(p) return isfolder and try(isfolder, p) or false end
-local function mkD(p) if makefolder and not isD(p) then pcall(makefolder, p) end end
-local function rdF(p) return readfile and try(readfile, p) or nil end
-local function wrF(p, c) if writefile then return pcall(writefile, p, c) end; return false end
-local function lsD(p) return listfiles and try(listfiles, p) or {} end
-local function dlF(p) if delfile then pcall(delfile, p) end end
-local function baseName(p) p = tostring(p):gsub("\\", "/"); return p:match("([^/]+)$") or p end
-local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
-local function jenc(t) local ok, r = pcall(HttpService.JSONEncode, HttpService, t); return ok and r or nil end
-local function jdec(s) local ok, r = pcall(HttpService.JSONDecode, HttpService, s); return ok and r or nil end
 local function sanitize(s) return (tostring(s):gsub("[^%w%-_ ]", "_")) end
 local function deepcopy(t)
     if type(t) ~= "table" then return t end
@@ -7457,32 +7405,30 @@ local function deepcopy(t)
     return o
 end
 
-mkD(ROOT_DIR); mkD(CFG_DIR); mkD(LIB_DIR); mkD(CACHE_DIR)
+makeDir(ROOT_DIR); makeDir(CFG_DIR); makeDir(LIB_DIR); makeDir(CACHE_DIR)
 
-----------------------------------------------------------------------
--- CUSTOMIZER SETTINGS
-----------------------------------------------------------------------
+-- Customizer settings
 -- One-time copy from the old standalone script's "DandyCustomizer" folder (settings, configs and the toon library).
 -- The old folder is left alone, so you can delete it whenever you like. Cached downloads are not copied; they re-download when needed.
 do
     local OLD, DONE = "DandyCustomizer", ROOT_DIR .. "/migrated.txt"
-    if isD(OLD) and not isF(DONE) then
+    if folderExists(OLD) and not fileExists(DONE) then
         local copied = 0
         for _, sub in ipairs({ "Configs", "Library" }) do
-            for _, p in ipairs(lsD(OLD .. "/" .. sub)) do
+            for _, p in ipairs(listDir(OLD .. "/" .. sub)) do
                 local name = baseName(p)
                 local dst = ROOT_DIR .. "/" .. sub .. "/" .. name
-                if name:lower():match("%.json$") and not isF(dst) then
-                    local d = rdF(OLD .. "/" .. sub .. "/" .. name)
-                    if d and wrF(dst, d) then copied = copied + 1 end
+                if name:lower():match("%.json$") and not fileExists(dst) then
+                    local d = readFile(OLD .. "/" .. sub .. "/" .. name)
+                    if d and writeFile(dst, d) then copied = copied + 1 end
                 end
             end
         end
-        if not isF(SETTINGS_F) and isF(OLD .. "/settings.json") then
-            local d = rdF(OLD .. "/settings.json")
-            if d and wrF(SETTINGS_F, d) then copied = copied + 1 end
+        if not fileExists(SETTINGS_F) and fileExists(OLD .. "/settings.json") then
+            local d = readFile(OLD .. "/settings.json")
+            if d and writeFile(SETTINGS_F, d) then copied = copied + 1 end
         end
-        wrF(DONE, "copied " .. copied .. " files from " .. OLD)
+        writeFile(DONE, "copied " .. copied .. " files from " .. OLD)
     end
 end
 
@@ -7491,7 +7437,7 @@ local S = {
     sources = { Lobby = true, Game = true, Roleplay = true }, captureOthers = true,
 }
 do
-    local s = jdec(rdF(SETTINGS_F) or "")
+    local s = jsonDecode(readFile(SETTINGS_F) or "")
     if type(s) == "table" then
         if type(s.folders) == "table" then S.folders = s.folders end
         if s.autoApply ~= nil then S.autoApply = s.autoApply and true or false end
@@ -7507,7 +7453,7 @@ do
         end
     end
 end
-local function saveSettings() local j = jenc(S); if j then wrF(SETTINGS_F, j) end end
+local function saveSettings() local j = jsonEncode(S); if j then writeFile(SETTINGS_F, j) end end
 
 -- Folders are always INSIDE TonyScriptPalace/CharacterCustomizer (never the executor's workspace root).
 local function cleanFolder(f)
@@ -7523,7 +7469,7 @@ local function ensureDir(rel)               -- creates nested folders one segmen
     local cur = ROOT_DIR
     for seg in tostring(rel):gmatch("[^/]+") do
         cur = cur .. "/" .. seg
-        if not isD(cur) then pcall(mkD, cur) end
+        if not folderExists(cur) then pcall(makeDir, cur) end
     end
 end
 do
@@ -7548,9 +7494,7 @@ local function getMesh(id)   -- yields
     return nil, tostring(mp)
 end
 
-----------------------------------------------------------------------
--- ASSET SOURCES  (rbxassetid / link / file in a folder YOU registered)
-----------------------------------------------------------------------
+-- Asset sources (rbxassetid / link / file in a folder YOU registered)
 local EXTS, classifyAsset, resolveAsset, resolveAnim, fileOptions, walkFiles, findFile
 do
 EXTS = { "png", "jpg", "jpeg", "webp", "bmp", "tga", "obj", "mesh", "rbxm", "rbxmx", "mp3", "ogg", "wav" }
@@ -7619,7 +7563,7 @@ end
 local function cachedPath(key)
     for _, e in ipairs(EXTS) do
         local p = CACHE_DIR .. "/" .. key .. "." .. e
-        if isF(p) then return p end
+        if fileExists(p) then return p end
     end
 end
 local function fetchToCache(url, force)
@@ -7641,14 +7585,14 @@ local function fetchToCache(url, force)
     end
     if not ext then return nil, "Unrecognised file type (png / jpg / webp / obj / mesh / rbxm)." end
     local path = CACHE_DIR .. "/" .. key .. "." .. ext
-    if not wrF(path, body) then return nil, "Couldn't write the cache file." end
+    if not writeFile(path, body) then return nil, "Couldn't write the cache file." end
     return path
 end
 
 walkFiles = function(folder, depth, out)
-    for _, p in ipairs(lsD(folder)) do
+    for _, p in ipairs(listDir(folder)) do
         p = (p:gsub("\\", "/"))
-        if isD(p) then
+        if folderExists(p) then
             if depth < 3 then walkFiles(p, depth + 1, out) end
         else
             out[#out + 1] = p
@@ -7693,12 +7637,12 @@ findFile = function(name)
     name = trim(name):gsub("\\", "/")
     local pre = ROOT_DIR .. "/"
     if name:lower():sub(1, #pre:lower()) == pre:lower() then name = name:sub(#pre + 1) end
-    if isF(ROOT_DIR .. "/" .. name) then return ROOT_DIR .. "/" .. name end             -- inside CharacterCustomizer (Images/face.png)
+    if fileExists(ROOT_DIR .. "/" .. name) then return ROOT_DIR .. "/" .. name end             -- inside CharacterCustomizer (Images/face.png)
     for _, folder in ipairs(S.folders) do
         local p = ROOT_DIR .. "/" .. folder .. "/" .. name                                -- just the file name (face.png)
-        if isF(p) then return p end
+        if fileExists(p) then return p end
     end
-    if isF(name) then return name end                                                     -- old behaviour: a path from the workspace root
+    if fileExists(name) then return name end                                                     -- old behaviour: a path from the workspace root
     local ln = name:lower()
     for _, f in ipairs(registeredFiles()) do
         local b = baseName(f.label):lower()
@@ -7760,9 +7704,7 @@ resolveAnim = function(src, cb)
 end
 
 end
-----------------------------------------------------------------------
--- VALUE ENCODING  (everything in a config is plain JSON)
-----------------------------------------------------------------------
+-- Value encoding (everything in a config is plain JSON)
 local ENUM_OF = { Material = "Material", Shape = "PartType", Face = "NormalId", ResampleMode = "ResamplerMode" }
 local PK = {
     Transparency = "num", Reflectance = "num", Color = "color", Color3 = "color", TextColor3 = "color",
@@ -7798,9 +7740,7 @@ local function encInst(inst, prop)
     return v
 end
 
-----------------------------------------------------------------------
--- MODEL HELPERS
-----------------------------------------------------------------------
+-- Model helpers
 local LOCK = { HumanoidRootPart = true, RootPart = true, DWFlat = true }
 local function pathOf(model, inst)
     local t, c = {}, inst
@@ -7887,9 +7827,7 @@ local function reqMismatch(req, id)
     end
 end
 
-----------------------------------------------------------------------
--- LIBRARY  (toons the script has seen; filled automatically)
-----------------------------------------------------------------------
+-- Library (toons the script has seen; filled automatically)
 local Library = {}
 local function serializeModel(model)
     local id = identity(model)
@@ -7933,15 +7871,15 @@ local function captureModel(model, mode)
     if mode and not d.srcs[mode] then d.srcs[mode] = true; changed = true end
     Library[d.key] = d
     if changed then
-        local j = jenc(d)
-        if j then wrF(LIB_DIR .. "/" .. sanitize(d.key) .. ".json", j) end
+        local j = jsonEncode(d)
+        if j then writeFile(LIB_DIR .. "/" .. sanitize(d.key) .. ".json", j) end
     end
 end
 do
-    for _, p in ipairs(lsD(LIB_DIR)) do
+    for _, p in ipairs(listDir(LIB_DIR)) do
         local n = baseName(p)
         if n:lower():match("%.json$") then
-            local d = jdec(rdF(LIB_DIR .. "/" .. n) or "")
+            local d = jsonDecode(readFile(LIB_DIR .. "/" .. n) or "")
             if type(d) == "table" and d.key and type(d.tex) == "table" then
                 d.parts, d.bones = nil, nil      -- model data from older captures is not used
                 d.anims = d.anims or {}
@@ -7976,9 +7914,7 @@ local function towerIcons()
     table.sort(out, function(a, b) return a.name:lower() < b.name:lower() end)
     return out
 end
-----------------------------------------------------------------------
--- CONTEXT  (everything we do to ONE character model, fully reversible)
-----------------------------------------------------------------------
+-- Context (everything we do to ONE character model, fully reversible)
 local Ctx = {}
 Ctx.__index = Ctx
 
@@ -8376,7 +8312,10 @@ function Ctx:startMirror()
     local m = { byId = byId, bones = {}, bonesAt = -10, written = {}, pick = {}, phase = {}, lastStep = nil }
     self.mirror = m
     m.conn = RunService.Heartbeat:Connect(function()
-        if not alive or self.mirror ~= m then return end
+        if not alive or self.mirror ~= m then
+            if m.conn then m.conn:Disconnect() end
+            return
+        end
         pcall(function() self:stepMirror(m) end)
     end)
 end
@@ -8663,14 +8602,13 @@ function Ctx:applyFlat(f)
         if world then weld.C0 = base.CFrame:ToObjectSpace(world) end
     end
     self.flatConn = RunService.RenderStepped:Connect(function()
+        if not alive then self.flatConn:Disconnect(); return end
         local ok, err = pcall(step)
         if not ok and not self.flatErr then self.flatErr = true; toast("2D error: " .. tostring(err), "err") end
     end)
 end
 
-----------------------------------------------------------------------
--- WORKING CONFIG
-----------------------------------------------------------------------
+-- Working config
 local function newCfg()
     return { name = "", requires = {}, textures = {}, animations = {}, overrides = {}, added = {}, nextId = 1 }
 end
@@ -8730,10 +8668,10 @@ end
 -- into TonyScriptPalace/CharacterCustomizer. The old folders are only read, never changed or deleted.
 do
     local DONE = ROOT_DIR .. "/migrated_folders.txt"
-    if not isF(DONE) then
+    if not fileExists(DONE) then
         local copied = 0
         for _, f in ipairs(S.folders) do
-            if isD(f) then
+            if folderExists(f) then
                 local all = {}
                 walkFiles(f, 0, all)
                 for _, p in ipairs(all) do
@@ -8741,22 +8679,20 @@ do
                     local i = rel:lower():find(f:lower() .. "/", 1, true)
                     rel = i and rel:sub(i + #f + 1) or baseName(p)
                     local dst = ROOT_DIR .. "/" .. f .. "/" .. rel
-                    if not isF(dst) then
+                    if not fileExists(dst) then
                         local sub = rel:match("^(.*)/[^/]+$")
                         ensureDir(sub and (f .. "/" .. sub) or f)
-                        local d = rdF(p)
-                        if d and wrF(dst, d) then copied = copied + 1 end
+                        local d = readFile(p)
+                        if d and writeFile(dst, d) then copied = copied + 1 end
                     end
                 end
             end
         end
-        wrF(DONE, "copied " .. copied .. " files from workspace-root folders")
+        writeFile(DONE, "copied " .. copied .. " files from workspace-root folders")
     end
 end
 
-----------------------------------------------------------------------
--- RULES + BINDING YOUR TOON + CAPTURE LOOP
-----------------------------------------------------------------------
+-- Rules + binding your toon + capture loop
 local function matchRule(id, isMe)
     local best, bestScore
     for _, r in ipairs(S.rules) do
@@ -8775,7 +8711,7 @@ local function matchRule(id, isMe)
     return best
 end
 local function loadRuleCfg(rule)
-    local data = jdec(rdF(CFG_DIR .. "/" .. rule.config .. ".json") or "")
+    local data = jsonDecode(readFile(CFG_DIR .. "/" .. rule.config .. ".json") or "")
     if type(data) ~= "table" then toast("Rule config '" .. tostring(rule.config) .. "' wasn't found.", "err"); return nil end
     return normCfg(data)
 end
@@ -8812,7 +8748,7 @@ local function bindMine(model, mode)
             if rc then W.cfg = rc; applied = true; toast("Rule applied: '" .. rule.config .. "'.", "ok") end
         end
         if not applied and S.autoApply and S.autoConfig ~= "" then
-            local data = jdec(rdF(CFG_DIR .. "/" .. S.autoConfig .. ".json") or "")
+            local data = jsonDecode(readFile(CFG_DIR .. "/" .. S.autoConfig .. ".json") or "")
             if type(data) == "table" then
                 local c = normCfg(data)
                 local k = reqMismatch(c.requires, id)
@@ -8967,9 +8903,7 @@ local function curEnc(inst, prop)
 end
 
 
-----------------------------------------------------------------------
--- CUSTOMIZER TAB  (sections built from the hub's own control types, so it follows whichever skin is active)
-----------------------------------------------------------------------
+-- Customizer tab (sections built from the hub's own control types, so it follows whichever skin is active)
 local P = {
     texSlot = "Normal", texSrc = "", animName = nil, animSrc = "", part = nil, cfgSel = "", cfgName = "", folderIn = "",
     spin = false, zoom = 1, pv = nil, panMode = false,
@@ -9018,7 +8952,7 @@ end
 local function fileOpts(kind) return fileOptions(kind) end      -- entries starting with "(" are hints, not files
 local function cfgList()
     local out = {}
-    for _, p in ipairs(lsD(CFG_DIR)) do
+    for _, p in ipairs(listDir(CFG_DIR)) do
         local n = baseName(p)
         if n:lower():match("%.json$") then out[#out + 1] = (n:gsub("%.[jJ][sS][oO][nN]$", "")) end
     end
@@ -9027,7 +8961,7 @@ local function cfgList()
 end
 local function curIdentity() return identity(W.mine and W.mine.model) end
 local function loadCfgFile(n, force)
-    local data = jdec(rdF(CFG_DIR .. "/" .. n .. ".json") or "")
+    local data = jsonDecode(readFile(CFG_DIR .. "/" .. n .. ".json") or "")
     if type(data) ~= "table" then return false, "Couldn't read '" .. n .. "'." end
     local c = normCfg(data)
     if not force then
@@ -9137,19 +9071,19 @@ local function buildPage()
             model = function() return W.mine and W.mine.model end,
             dirty = function() local d = previewDirty; previewDirty = false; return d end,
             spin = function() return P.spin end, zoom = function() return P.zoom end, panMode = function() return P.panMode end, bind = function(ctl) P.pv = ctl end },
-        { t = "text", text = "Drag to rotate. Hold the middle mouse button and drag (or hold Shift and drag) to move the view around. Scroll to zoom. It refreshes on its own when you change something."},
+        { t = "text", text = "Drag to rotate. Hold the middle mouse button and drag (or hold Shift and drag) to move the view. Scroll to zoom. It updates by itself when you change something."},
         { t = "toggle", text = "Drag Moves Instead Of Rotating", get = function() return P.panMode end, set = function(v) P.panMode = v end },
         { t = "toggle", text = "Auto-Spin", get = function() return P.spin end, set = function(v) P.spin = v end },
         { t = "slider", text = "Zoom", min = 0.3, max = 3, dec = 2, get = function() return P.zoom end,
             set = function(v) P.zoom = v; if P.pv then P.pv.setZoom(v) end end },
         { t = "buttons", items = { { label = "Reset View", fn = function() P.zoom = 1; if P.pv then P.pv.reset() end; tspRefresh() end } } },
-        { t = "text", text = "If the preview stays blank, your Roblox client isn't drawing viewports right now (in testing, even a plain ball in a fresh viewport stayed invisible). Nothing else in the Customizer needs it, so you can shrug and move on."},
+        { t = "text", text = "If the preview stays blank, your Roblox client isn't drawing viewports right now (even a plain ball in a fresh viewport stayed invisible in testing). Nothing else in the Customizer needs it, so just shrug and move on."},
     } }
 
     -- 1. STATUS -------------------------------------------------------
     secs[#secs + 1] = { title = "Status", collapsed = true, controls = {
         { t = "livetext", get = statusLine },
-        { t = "text", text = "Everything here is cosmetic and only on your client. Nothing touches the Humanoid, RootPart, speed or any remote, so it's strictly for show."},
+        { t = "text", text = "Everything here is cosmetic and only happens on your client. Nothing touches your Humanoid, speed or any remote. It's strictly for show."},
         { t = "buttons", items = {
             { label = "Rescan Models", fn = function() W.rescan = true; toast("Rescanning every model source...", "info") end },
             { label = "Revert Everything", style = "red", confirm = true, fn = function()
@@ -9159,7 +9093,7 @@ local function buildPage()
 
     -- 2. SOURCES ------------------------------------------------------
     local src = {
-        { t = "text", text = "Pick where toons get collected from. Your own toon always binds wherever the game puts it."},
+        { t = "text", text = "Pick where toons get collected from. Your own toon always uses whatever the game gives it."},
     }
     local where = { Lobby = "Lobby  (workspace.Players)", Game = "Game  (workspace.InGamePlayers)", Roleplay = "Roleplay Mode  (auto-detected)" }
     for _, m in ipairs(MODES) do
@@ -9178,7 +9112,7 @@ local function buildPage()
 
     -- 4. TEXTURES -----------------------------------------------------
     secs[#secs + 1] = { title = "Textures", collapsed = true, controls = {
-        { t = "text", text = "Change what your toon looks like. Face textures swap with blinking and hurting automatically."},
+        { t = "text", text = "Change what your toon looks like. Face textures swap with blinking and getting hurt automatically."},
         { t = "dropdown", text = "Slot", get = function() return P.texSlot end, options = function() return texSlots() end,
             set = function(o) P.texSlot = o; tspRefresh() end },
         { t = "readout", text = "Current", get = function() local c = W.cfg.textures[P.texSlot]; return c and short(c, 26) or "game default" end },
@@ -9214,7 +9148,7 @@ local function buildPage()
 
     -- 5. ANIMATIONS ---------------------------------------------------
     secs[#secs + 1] = { title = "Animations", collapsed = true, controls = {
-        { t = "text", text = "Swap animations one at a time, or grab a whole pack from another toon. Files: .rbxm with a KeyframeSequence (experimental, so keep expectations reasonable)."},
+        { t = "text", text = "Swap animations one at a time, or grab a whole pack from another toon. Files: .rbxm with a KeyframeSequence (experimental, so don't expect miracles)."},
         { t = "toggle", text = "Keep Animations Local", get = function() return S.localAnims end,
             set = function(v) S.localAnims = v; saveSettings(); reapply(); toast(v and "Animations are now local: only you see them." or "Animations are now replicated: everyone sees them.", "info") end },
         { t = "text", text = "On: only you see your custom animations and everyone else keeps seeing your normal ones. Off: the game plays them for everyone, which can look broken to others if the rig doesn't match (hello, T-pose)."},
@@ -9274,7 +9208,7 @@ local function buildPage()
     -- 6. PARTS --------------------------------------------------------
     do
         local ctl = {
-            { t = "text", text = "Hide a part, fade it or recolor it. Pick one from your toon first."},
+            { t = "text", text = "Hide a part, fade it or recolor it. Pick a part from your toon first."},
             { t = "dropdown", text = "Part", get = function() local p = partInst(); return p and short(pathOf(W.mine.model, p), 26) or "Pick a part..." end,
                 options = function() local l = partMap(); if #l == 0 then return { "(no character found yet)" } end; return l end,
                 set = function(o) local _, map = partMap(); if map[o] then P.part = map[o]; tspRefresh() end end },
@@ -9334,7 +9268,7 @@ local function buildPage()
 
     -- 8. CONFIGS ------------------------------------------------------
     secs[#secs + 1] = { title = "Customizer Configs", collapsed = true, controls = {
-        { t = "text", text = "These save your toon edits (model, textures, animations, parts, 2D). Hub configs in the Configs tab only remember which one is loaded."},
+        { t = "text", text = "These save your toon edits (model, textures, animations, parts, 2D). Configs in the Configs tab only remember which one is loaded."},
         { t = "dropdown", text = "Saved Configs", get = function() return P.cfgSel ~= "" and P.cfgSel or "Pick a config..." end,
             options = function() local l = cfgList(); if #l == 0 then return { "(none saved yet)" } end; return l end,
             set = function(o) if o:sub(1, 1) ~= "(" then P.cfgSel = o; P.cfgName = o; tspRefresh() end end },
@@ -9344,8 +9278,8 @@ local function buildPage()
                 local n = sanitize(trim(P.cfgName))
                 if n == "" then return toast("Type a config name first.", "err") end
                 W.cfg.name = n
-                local js = jenc(W.cfg)
-                if js and wrF(CFG_DIR .. "/" .. n .. ".json", js) then P.cfgSel = n; toast("Saved '" .. n .. "'.", "ok"); tspRefresh()
+                local js = jsonEncode(W.cfg)
+                if js and writeFile(CFG_DIR .. "/" .. n .. ".json", js) then P.cfgSel = n; toast("Saved '" .. n .. "'.", "ok"); tspRefresh()
                 else toast("Couldn't write the config file.", "err") end
             end },
             { label = "Load", style = "blue", fn = function()
@@ -9372,8 +9306,8 @@ local function buildPage()
             end },
             { label = "Delete", style = "red", confirm = true, fn = function()
                 local n = P.cfgSel ~= "" and P.cfgSel or trim(P.cfgName)
-                if n == "" or not isF(CFG_DIR .. "/" .. n .. ".json") then return toast("Pick an existing config to delete.", "err") end
-                dlF(CFG_DIR .. "/" .. n .. ".json")
+                if n == "" or not fileExists(CFG_DIR .. "/" .. n .. ".json") then return toast("Pick an existing config to delete.", "err") end
+                deleteFile(CFG_DIR .. "/" .. n .. ".json")
                 if S.autoConfig == n then S.autoConfig = ""; saveSettings() end
                 P.cfgSel = ""; P.cfgName = ""; toast("Deleted '" .. n .. "'.", "ok"); tspRefresh()
             end },
@@ -9381,7 +9315,7 @@ local function buildPage()
         { t = "toggle", text = "Auto-Apply On Join", get = function() return S.autoApply end, set = function(v) S.autoApply = v; saveSettings() end },
         { t = "readout", text = "Auto-Apply Config", get = function()
             if S.autoConfig == "" then return "(none)" end
-            return isF(CFG_DIR .. "/" .. S.autoConfig .. ".json") and S.autoConfig or (S.autoConfig .. "  (file missing)")
+            return fileExists(CFG_DIR .. "/" .. S.autoConfig .. ".json") and S.autoConfig or (S.autoConfig .. "  (file missing)")
         end },
         { t = "buttons", items = { { label = "Clear Auto-Apply Config", fn = function()
             S.autoConfig = ""; saveSettings(); toast("Auto-apply config cleared: nothing will be applied on join.", "ok"); tspRefresh()
@@ -9398,7 +9332,7 @@ local function buildPage()
 
     -- 9. FILES & LIBRARY ---------------------------------------------
     local fl = {
-        { t = "text", text = "Folders live inside TonyScriptPalace/CharacterCustomizer in your executor's workspace (Images, Textures and Animations are made for you). Drop files in and they show up in every Pick A File menu. Images: png, jpg, webp. Animations: rbxm."},
+        { t = "text", text = "These folders live inside TonyScriptPalace/CharacterCustomizer in your executor's workspace (Images, Textures and Animations are made for you). Drop files in and they show up in every Pick A File menu. Images: png, jpg, webp. Animations: rbxm."},
         { t = "input", text = "Add Folder", placeholder = "name, like Images/Faces, then Enter", get = function() return P.folderIn end,
             set = function(txt, enter)
                 P.folderIn = trim(txt)
@@ -9420,7 +9354,7 @@ local function buildPage()
             options = function() return S.folders end,
             set = function(o) local i = table.find(S.folders, o); if i then table.remove(S.folders, i); saveSettings(); tspRefresh() end end }
     end
-    fl[#fl + 1] = { t = "text", text = "Scan Game Memory digs through toon models the game keeps hidden in memory and saves them to your library (experimental, can take a few seconds)."}
+    fl[#fl + 1] = { t = "text", text = "Scan Game Memory digs up toon models the game keeps hidden in memory and saves them to your library (experimental, can take a few seconds)."}
     fl[#fl + 1] = { t = "buttons", items = { { label = "Scan Game Memory For Toons", fn = scanMemory } } }
     fl[#fl + 1] = { t = "dropdown", text = "Remove Toon From Library", get = function() return "Pick a toon..." end,
         options = function() local l = toonOpts(nil, "All"); if #l == 0 then return { "(library is empty)" } end; return l end,
@@ -9429,14 +9363,14 @@ local function buildPage()
             local e = map[o]
             if not e then return end
             Library[e.key] = nil
-            dlF(LIB_DIR .. "/" .. sanitize(e.key) .. ".json")
+            deleteFile(LIB_DIR .. "/" .. sanitize(e.key) .. ".json")
             tspRefresh()
         end }
     fl[#fl + 1] = { t = "readout", text = "Toons In Library", get = function() local n = 0; for _ in pairs(Library) do n = n + 1 end; return n end }
     fl[#fl + 1] = { t = "buttons", items = {
         { label = "Clear Library", style = "red", confirm = true, fn = function()
             for k in pairs(Library) do Library[k] = nil end
-            for _, p in ipairs(lsD(LIB_DIR)) do if baseName(p):lower():match("%.json$") then dlF(p) end end
+            for _, p in ipairs(listDir(LIB_DIR)) do if baseName(p):lower():match("%.json$") then deleteFile(p) end end
             W.libSel = nil; toast("Library cleared. It refills as you play.", "ok"); tspRefresh()
         end },
     } }
@@ -9445,9 +9379,7 @@ local function buildPage()
     return secs
 end
 
-----------------------------------------------------------------------
--- PUBLIC API
-----------------------------------------------------------------------
+-- Public API
 refreshPages = function() tspRefresh() end
 
 local API = { build = buildPage, working = W }
@@ -9468,7 +9400,7 @@ function API.apply(d)
         end
         pcall(saveSettings)
     end
-    if type(d) == "table" and type(d.config) == "string" and isF(CFG_DIR .. "/" .. d.config .. ".json") then
+    if type(d) == "table" and type(d.config) == "string" and fileExists(CFG_DIR .. "/" .. d.config .. ".json") then
         if loadCfgFile(d.config, true) then reapply() end
     end
 end
@@ -9506,20 +9438,9 @@ local Snd = { K = {} }
     local FILE_DIRS  = { "Music", "Sounds", FILES_DIR }   -- folders (inside the executor workspace) that sources can point into
     local EXTS = { "mp3", "ogg", "wav", "flac" }
 
-    local function isF(p) return isfile and try(isfile, p) or false end
-    local function isD(p) return isfolder and try(isfolder, p) or false end
-    local function mkD(p) if makefolder and not isD(p) then pcall(makefolder, p) end end
-    local function rdF(p) return readfile and try(readfile, p) or nil end
-    local function wrF(p, c) if writefile then return (pcall(writefile, p, c)) end; return false end
-    local function lsD(p) return listfiles and try(listfiles, p) or {} end
-    local function dlF(p) if delfile then pcall(delfile, p) end end
-    local function baseName(p) p = tostring(p):gsub("\\", "/"); return p:match("([^/]+)$") or p end
-    local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
-    local function jenc(t) local ok, r = pcall(HttpService.JSONEncode, HttpService, t); return ok and r or nil end
-    local function jdec(s) local ok, r = pcall(HttpService.JSONDecode, HttpService, s); return ok and r or nil end
     local function fmtTime(s) s = math.floor(s or 0); return string.format("%d:%02d", s // 60, s % 60) end
 
-    mkD("TonyScriptPalace"); mkD(ROOT); mkD(SETUP_DIR); mkD(CACHE_DIR); mkD(FILES_DIR); mkD("Music"); mkD("Sounds")
+    makeDir("TonyScriptPalace"); makeDir(ROOT); makeDir(SETUP_DIR); makeDir(CACHE_DIR); makeDir(FILES_DIR); makeDir("Music"); makeDir("Sounds")
 
     local holder = Instance.new("Folder")
     holder.Name = "TSP_SoundHolder"
@@ -9730,7 +9651,7 @@ local Snd = { K = {} }
     local function cachedPath(key)
         for _, e in ipairs(EXTS) do
             local p = CACHE_DIR .. "/" .. key .. "." .. e
-            if isF(p) then return p end
+            if fileExists(p) then return p end
         end
     end
     local function fetchToCache(url, force)
@@ -9757,7 +9678,7 @@ local Snd = { K = {} }
         if not ext then return nil, "Unrecognised audio format (use mp3 / ogg / wav)." end
         if ext == "m4a" then return nil, "m4a/mp4 isn't supported by Roblox. Convert it to mp3 or ogg." end
         local path = CACHE_DIR .. "/" .. key .. "." .. ext
-        if not wrF(path, body) then return nil, "Couldn't write the cache file." end
+        if not writeFile(path, body) then return nil, "Couldn't write the cache file." end
         return path, label
     end
 
@@ -9765,7 +9686,7 @@ local Snd = { K = {} }
     function Snd.listFiles()
         local out = {}
         for _, dir in ipairs(FILE_DIRS) do
-            for _, p in ipairs(lsD(dir)) do
+            for _, p in ipairs(listDir(dir)) do
                 local n = baseName(p)
                 local e = n:match("%.(%w+)$")
                 if e and table.find(EXTS, e:lower()) then out[#out + 1] = (dir == "Music") and n or (baseName(dir) .. "/" .. n) end
@@ -9776,14 +9697,14 @@ local Snd = { K = {} }
     end
     local function findFile(name)
         name = tostring(name):gsub("\\", "/")
-        if isF(name) then return name end
+        if fileExists(name) then return name end
         for _, dir in ipairs(FILE_DIRS) do
             local direct = dir .. "/" .. name
-            if isF(direct) then return direct end
+            if fileExists(direct) then return direct end
         end
         local ln = name:lower():gsub("^.*/", "")
         for _, dir in ipairs(FILE_DIRS) do
-            for _, p in ipairs(lsD(dir)) do
+            for _, p in ipairs(listDir(dir)) do
                 local n = baseName(p):lower()
                 if n == ln or (n:gsub("%.%w+$", "")) == ln then return dir .. "/" .. baseName(p) end
             end
@@ -10868,11 +10789,11 @@ local Snd = { K = {} }
         st.offMode = oneOf(a.offMode, K.OFF_ALL, st.offMode)
     end
     local function saveAll()
-        local s = jenc({ enabled = st.enabled, gameOn = st.gameOn, sfxOn = st.sfxOn, emitOn = st.emitOn, muteGame = st.muteGame, muteOnlyMine = st.muteOnlyMine,
+        local s = jsonEncode({ enabled = st.enabled, gameOn = st.gameOn, sfxOn = st.sfxOn, emitOn = st.emitOn, muteGame = st.muteGame, muteOnlyMine = st.muteOnlyMine,
             muteKeywords = st.muteKeywords, seenRooms = seenRooms, audio = audioBlock(), mixer = st.mixer, lastSetup = st.lastSetup })
-        if s then wrF(SETTINGS_F, s) end
-        local a = jenc({ songs = st.songs, sfx = st.sfx, rules = st.rules, emitters = st.emitters })
-        if a then wrF(AUTOSAVE_F, a) end
+        if s then writeFile(SETTINGS_F, s) end
+        local a = jsonEncode({ songs = st.songs, sfx = st.sfx, rules = st.rules, emitters = st.emitters })
+        if a then writeFile(AUTOSAVE_F, a) end
     end
     Snd.save = saveAll
 
@@ -10898,25 +10819,25 @@ local Snd = { K = {} }
     end
     local function listFilesIn(dir)
         local out = {}
-        for _, p in ipairs(lsD(dir)) do out[#out + 1] = baseName(p) end
+        for _, p in ipairs(listDir(dir)) do out[#out + 1] = baseName(p) end
         return out
     end
 
     do -- startup load (+ one-time import of the old Aero Music Player files)
-        local s = jdec(rdF(SETTINGS_F) or "")
-        local a = jdec(rdF(AUTOSAVE_F) or "")
+        local s = jsonDecode(readFile(SETTINGS_F) or "")
+        local a = jsonDecode(readFile(AUTOSAVE_F) or "")
         local imported = false
-        if not a and isF("AeroMusic/autosave.json") then
-            a = jdec(rdF("AeroMusic/autosave.json")); imported = a ~= nil
+        if not a and fileExists("AeroMusic/autosave.json") then
+            a = jsonDecode(readFile("AeroMusic/autosave.json")); imported = a ~= nil
             if imported then
-                local old = jdec(rdF("AeroMusic/settings.json") or "")
+                local old = jsonDecode(readFile("AeroMusic/settings.json") or "")
                 if type(old) == "table" and not s then
                     s = { muteGame = old.muteGame, muteKeywords = old.muteKeywords, seenRooms = old.seenRooms, audio = old.audio }
                 end
                 for _, n in ipairs(listFilesIn("AeroMusic/Setups")) do
-                    if n:lower():match("%.json$") and not isF(SETUP_DIR .. "/" .. n) then
-                        local body = rdF("AeroMusic/Setups/" .. n)
-                        if body then wrF(SETUP_DIR .. "/" .. n, body) end
+                    if n:lower():match("%.json$") and not fileExists(SETUP_DIR .. "/" .. n) then
+                        local body = readFile("AeroMusic/Setups/" .. n)
+                        if body then writeFile(SETUP_DIR .. "/" .. n, body) end
                     end
                 end
             end
@@ -10944,7 +10865,7 @@ local Snd = { K = {} }
     -- setups = named copies of everything (songs, effects, replacements, audio, mixer)
     function Snd.listSetups()
         local out = {}
-        for _, p in ipairs(lsD(SETUP_DIR)) do
+        for _, p in ipairs(listDir(SETUP_DIR)) do
             local n = baseName(p)
             if n:lower():match("%.json$") then out[#out + 1] = (n:gsub("%.[jJ][sS][oO][nN]$", "")) end
         end
@@ -10954,13 +10875,13 @@ local Snd = { K = {} }
     function Snd.saveSetup(name)
         name = trim(name):gsub("[^%w%-_ ]", "_")
         if name == "" then return false, "Type a setup name first." end
-        local js = jenc({ name = name, songs = st.songs, sfx = st.sfx, rules = st.rules, emitters = st.emitters, audio = audioBlock(), mixer = st.mixer })
-        if js and wrF(SETUP_DIR .. "/" .. name .. ".json", js) then st.lastSetup = name; markDirty(); return true, "Saved setup '" .. name .. "'." end
+        local js = jsonEncode({ name = name, songs = st.songs, sfx = st.sfx, rules = st.rules, emitters = st.emitters, audio = audioBlock(), mixer = st.mixer })
+        if js and writeFile(SETUP_DIR .. "/" .. name .. ".json", js) then st.lastSetup = name; markDirty(); return true, "Saved setup '" .. name .. "'." end
         return false, "Couldn't write the setup file."
     end
     function Snd.loadSetup(name)
         name = trim(name)
-        local data = jdec(rdF(SETUP_DIR .. "/" .. name .. ".json") or "")
+        local data = jsonDecode(readFile(SETUP_DIR .. "/" .. name .. ".json") or "")
         if type(data) ~= "table" then return false, "Couldn't load '" .. name .. "'." end
         clearAll()
         loadItems(data)
@@ -10974,8 +10895,8 @@ local Snd = { K = {} }
     end
     function Snd.deleteSetup(name)
         name = trim(name)
-        if not isF(SETUP_DIR .. "/" .. name .. ".json") then return false, "Pick an existing setup to delete." end
-        dlF(SETUP_DIR .. "/" .. name .. ".json")
+        if not fileExists(SETUP_DIR .. "/" .. name .. ".json") then return false, "Pick an existing setup to delete." end
+        deleteFile(SETUP_DIR .. "/" .. name .. ".json")
         if st.lastSetup == name then st.lastSetup = "" end
         return true, "Deleted setup '" .. name .. "'."
     end
@@ -10988,7 +10909,7 @@ local Snd = { K = {} }
     function Snd.apply(d)
         if type(d) ~= "table" then return end
         for _, k in ipairs({ "enabled", "gameOn", "sfxOn", "emitOn", "muteGame" }) do if d[k] ~= nil then st[k] = d[k] and true or false end end
-        if type(d.setup) == "string" and d.setup ~= "" and d.setup ~= st.lastSetup and isF(SETUP_DIR .. "/" .. d.setup .. ".json") then Snd.loadSetup(d.setup) end
+        if type(d.setup) == "string" and d.setup ~= "" and d.setup ~= st.lastSetup and fileExists(SETUP_DIR .. "/" .. d.setup .. ".json") then Snd.loadSetup(d.setup) end
         -- the config's own volume, pitch, fades and mixer go on top of whatever the setup just set
         applyAudio(d.audio)
         if type(d.muteOnlyMine) == "boolean" then st.muteOnlyMine = d.muteOnlyMine end
@@ -11011,7 +10932,7 @@ local Snd = { K = {} }
         return item
     end
     function Snd.duplicate(kind, item)
-        local copy = NORM[kind](jdec(jenc(item) or "") or {})
+        local copy = NORM[kind](jsonDecode(jsonEncode(item) or "") or {})
         copy.name = item.name .. " copy"
         st[kind][#st[kind] + 1] = copy
         if kind == "songs" then rebuildMap() end
@@ -11069,15 +10990,12 @@ end)()
 
 --#endregion sound-engine
 --#region page-sound
-----------------------------------------------------------------------
--- SOUND TAB  (page for the sound engine above)
-----------------------------------------------------------------------
+-- Sound tab (page for the sound engine above)
 ;(function()
     local Snd = UI.snd
     local st, K = Snd.st, Snd.K
     local U = { song = nil, sfx = nil, rule = nil, emitter = nil, seen = nil, filter = "", setupName = "", pick = nil }
     Snd.ui = U
-    local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
     local function dirty() Snd.markDirty() end
     local function again() refreshPage() end
 
@@ -11281,7 +11199,7 @@ end)()
             { t = "slider", text = "Fade Time (s)", min = 0.1, max = 10, dec = 1, get = function() return st.fadeTime end, set = function(v) st.fadeTime = v; dirty() end },
             { t = "dropdown", text = "Song Not Playing", get = function() return offLabels[st.offMode] or "Stop (restart)" end, options = function() return offOpts end,
               set = function(l) st.offMode = fromLabel[l] or "Stop"; dirty(); again() end },
-            { t = "text", text = "What a song does when something else takes over. Stop: starts from 0 next time. Pause: picks up where it left off. Mute: keeps playing silently in the background, so when it comes back it's exactly where it would have been (handy for songs that line up, like layered stems). Each song can override this."},
+            { t = "text", text = "What a song does when something else takes over. Stop: starts from 0 next time. Pause: picks up where it left off. Mute: keeps playing silently in the background, so when it comes back it's exactly where it would have been (good for songs that need to line up, like layered stems). Each song can override this."},
             { t = "toggle", text = "Mute Game Music", get = function() return st.muteGame end, set = function(v) st.muteGame = v; Snd.changed() end },
             { t = "toggle", text = "Only While Mine Plays", get = function() return st.muteOnlyMine end, set = function(v) st.muteOnlyMine = v; dirty() end },
             { t = "input", text = "Mute Keywords", placeholder = "music,theme,bgm  (*long = any long loop)", get = function() return st.muteKeywords end,
@@ -11361,7 +11279,7 @@ end)()
         local rule = U.rule
         local out = {}
         out[#out + 1] = { title = "Game Sound Replacement", controls = {
-            { t = "text", text = "Swap, mute or adjust sounds the game itself plays: hurt sounds, ambience, jingles, footsteps, even the game's music. Use the Sound Browser to find out what a sound is called."},
+            { t = "text", text = "Swap, mute or change sounds the game itself plays: hurt sounds, ambience, jingles, footsteps, even the game's music. Use the Sound Browser to find out what a sound is called."},
             itemList("rules", "rule", nil, function(r) return r.action .. ": " .. r.name .. (r.enabled and "" or "  (off)") end, "No replacements yet. Press + Add Rule."),
             listButtons("rules", "rule", "Rule"),
         } }
@@ -11406,7 +11324,7 @@ end)()
         local em = U.emitter
         local out = {}
         out[#out + 1] = { title = "Twisted Emitters", controls = {
-            { t = "text", text = "Make Twisteds play sounds or music. The sound is attached to the Twisted itself, follows it around and gets quieter with distance. Great for a theme that fades in as one gets close."},
+            { t = "text", text = "Make Twisteds play sounds or music. The sound is attached to the Twisted, follows it around and gets quieter with distance. Great for a theme that fades in as one gets close."},
             itemList("emitters", "emitter", nil, function(x) return x.twisted .. ": " .. x.name .. (x.enabled and "" or "  (off)") end, "No emitters yet. Press + Add Emitter."),
             listButtons("emitters", "emitter", "Emitter"),
         } }
@@ -11943,7 +11861,7 @@ local function buildBindsPage()
     local ids = {}
     for id in pairs(Binds.map) do ids[#ids + 1] = id end
     table.sort(ids, function(a, b) return (Binds.map[a].label or a):lower() < (Binds.map[b].label or b):lower() end)
-    local mine = { { t = "text", text = "Every toggle can have a keybind and an on-screen button. Right-click any toggle in the hub to make one, or use Add A Bind below. They are saved inside configs, so each config can have its own set. Click an on-screen button to flip its toggle, drag it to move it, right-click it for a menu." } }
+    local mine = { { t = "text", text = "Every toggle can have a keybind and an on-screen button. Right-click any toggle in the menu to make one, or use Add A Bind below. They're saved inside configs, so each config can have its own set. Click an on-screen button to flip its toggle, drag it to move it, right-click it for a menu." } }
     if #ids == 0 then
         mine[#mine + 1] = { t = "text", text = "No binds yet." }
     end
@@ -11985,7 +11903,7 @@ local function buildBindsPage()
     } }
 
     secs[#secs + 1] = { title = "On-Screen Buttons", controls = {
-        { t = "text", text = "Put every on-screen button back in a tidy column, or take them all away. Keybinds are not affected." },
+        { t = "text", text = "Puts every on-screen button back in a tidy column, or removes them all. Keybinds aren't affected." },
         { t = "buttons", items = {
             { label = "Tidy Up Buttons", fn = function()
                 local n = 0
@@ -12007,7 +11925,7 @@ local function buildBindsPage()
     local KILL_ID, Kill = Binds.killId, Binds.kill
     local km = Binds.map[KILL_ID]
     secs[#secs + 1] = { title = "Do Not Press", controls = {
-        { t = "text", text = "Exactly one thing happens when you press this: your character dies. It warns you first. Press once to arm it, then press again within 3 seconds to go through with it. The kill keybind below works the same way, and it can have an on-screen button like any toggle." },
+        { t = "text", text = "Exactly one thing happens when you press this: your character dies. It warns you first. Press once to arm it, then press again within 3 seconds to confirm. The kill keybind below works the same way, and it can have an on-screen button like any toggle." },
         { t = "killbutton", label = "BIG RED BUTTON THAT KILLS YOU", armedLabel = "ARE YOU SURE? PRESS AGAIN",
             warn = "This will kill your character. Press the button again within 3 seconds to confirm.",
             fn = function() if not Kill.run() then toast("There is no character to kill right now.", "err") end end },
@@ -12165,9 +12083,7 @@ UI.tabs = {
 end
 --#endregion tabs
 --#region window-behaviour
-----------------------------------------------------------------------
--- WINDOW BEHAVIOUR
-----------------------------------------------------------------------
+-- Window behaviour
 function UI.setVisible(v)
     UI.visible = v and true or false
     closePopup()
@@ -12283,9 +12199,7 @@ end
 
 --#endregion window-behaviour
 --#region skin-dandy
-----------------------------------------------------------------------
--- SKIN: DANDY'S WORLD (default)
-----------------------------------------------------------------------
+-- Skin: Dandy's World (default)
 local function buildDandyChrome()
     local c = T.c
     Win.BackgroundColor3 = c.panel; Win.ClipsDescendants = true
@@ -12360,9 +12274,7 @@ end
 
 --#endregion skin-dandy
 --#region skin-aero
-----------------------------------------------------------------------
--- SKIN: FRUTIGER AERO
-----------------------------------------------------------------------
+-- Skin: Frutiger Aero
 local function buildAeroChrome()
     local c = T.c
     Win.ClipsDescendants = true
@@ -12450,9 +12362,7 @@ end
 
 --#endregion skin-aero
 --#region skin-xmb
-----------------------------------------------------------------------
--- SKIN: XMB / PLAYSTATION
-----------------------------------------------------------------------
+-- Skin: XMB / PlayStation
 local function drawIcon(parent, id)
     local function circ(x, y, d, filled, th)
         local f = New("Frame", { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(d, d), BackgroundColor3 = WHITE,
@@ -12628,9 +12538,7 @@ end
 
 --#endregion skin-xmb
 --#region skin-xp
-----------------------------------------------------------------------
--- SKIN: WINDOWS XP LUNA
-----------------------------------------------------------------------
+-- Skin: Windows XP Luna
 local function buildXPChrome()
     local c = T.c
     Win.BackgroundColor3 = c.title:Lerp(BLACK, 0.12)   -- the thick Luna window frame
@@ -12738,9 +12646,7 @@ end
 
 --#endregion skin-xp
 --#region build-gui
-----------------------------------------------------------------------
--- BUILD / REBUILD THE WHOLE GUI
-----------------------------------------------------------------------
+-- Build / rebuild the whole GUI
 function buildGui()
     local keepY = Content and Content.CanvasPosition.Y or 0
     closePopup()
@@ -12777,9 +12683,7 @@ end
 
 --#endregion build-gui
 --#region boot
-----------------------------------------------------------------------
--- INPUT + BOOT + CLEANUP
-----------------------------------------------------------------------
+-- Input + boot + cleanup
 connect(UIS.InputChanged, function(i)
     if activeDrag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
         activeDrag(i.Position)
@@ -12845,7 +12749,7 @@ env.TonyScriptPalace = { Destroy = Destroy, Settings = S, ESP = ESP, API = funct
     Show = function() UI.setVisible(true) end, Hide = function() UI.setVisible(false) end, Toggle = function() UI.setVisible(not UI.visible) end }
 
 -- auto-load the last config
-if S.autoload and S.lastConfig ~= "" and isF(cfgPath(S.lastConfig)) then
+if S.autoload and S.lastConfig ~= "" and fileExists(cfgPath(S.lastConfig)) then
     pcall(loadConfig, S.lastConfig)
 end
 
