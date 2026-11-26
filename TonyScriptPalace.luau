@@ -2401,6 +2401,7 @@ local Auto = {
     SwimmyRapid = false,        -- keep collecting coins non-stop, SwimmyRapidRate per second
     SwimmyRapidRate = 4,
     ChaseQuit = false,      -- Chase Safety: leave the machine the moment a Twisted is chasing you (even mid skill check)
+    Ability = { On = false, Custom = false, All = false, Spotted = false, Chasing = false, Status = "Off" },   -- Auto Ability. Custom = only when the chosen conditions are met (All = every one of them, otherwise any one)
     Status = "Idle",
 }
 do
@@ -2740,24 +2741,59 @@ do
         sw.M = nil; sw.inst = nil
     end
 
-    -- ---------------------------------------------------------- CHASE SAFETY
-    -- While any Twisted is chasing you (the game's ChaseCount on your player) and you are on a machine, you are taken off it: the same "Stop" the
-    -- machine's Stop button sends (the button itself is locked during a skill check, this is not), then the game's own client-side unwind, which
-    -- aborts a skill check in progress. Because it checks every frame, starting a machine while chased gets you kicked straight back off.
-    local cq = { last = 0 }
-    local function realChaseCount()
-        local n = math.max(0, math.floor(tonumber(LP:GetAttribute("ChaseCount")) or 0))
-        local pur = Fun.Pur
-        if pur and pur.counted and pur.counted() then n = math.max(0, n - 1) end   -- your own Pursuer adds one to that number, and it is not a Twisted
-        return n
+    -- ---------------------------------------------------------- TWISTED CHASE WATCH (shared by Chase Safety and Auto Ability)
+    -- Reads the Twisteds in the room: each has a Chasing flag, a LostInterest flag and a ChasingValue that points at whoever it is after.
+    -- Twisted Dessa is left out of all of it. She is guaranteed to come for you at least once and she doesn't hurt on contact (she charges her attacks up),
+    -- so being chased by her isn't a reason to run. She is told apart by name: any Twisted with "Dessa" in its name.
+    local watch = { t = 0, n = 0, set = {}, spottedUntil = 0 }
+    local function isDessa(m) return m.Name:lower():find("dessa", 1, true) ~= nil end
+    local function flagOn(m, name)
+        if m:GetAttribute(name) == true then return true end
+        local v = m:FindFirstChild(name)
+        return v ~= nil and v:IsA("BoolValue") and v.Value == true
     end
+    -- true: this Twisted is after me. false: it is after someone else. nil: it doesn't say
+    local function chasesMe(m)
+        local cv = m:FindFirstChild("ChasingValue")
+        local v = cv and cv:IsA("ObjectValue") and cv.Value or nil
+        if not v then return nil end
+        local ch = LP.Character
+        return v == LP or v == ch or (ch ~= nil and v:IsDescendantOf(ch)) or v.Name == LP.Name
+    end
+    -- watch.n = Twisteds (not Dessa) chasing you right now. watch.spottedUntil = until when "a Twisted just spotted you" counts as having just happened
+    local function chaseWatch()
+        local now = os.clock()
+        if now - watch.t < 0.05 then return watch end      -- both features share one look every 50 ms
+        watch.t = now
+        local n, set = 0, {}
+        if (tonumber(LP:GetAttribute("ChaseCount")) or 0) > 0 then      -- the game's own count is 0 when nothing is chasing you, so there is nothing to look for
+            local cr = Workspace:FindFirstChild("CurrentRoom")
+            for _, room in ipairs(cr and cr:GetChildren() or {}) do
+                local mons = room:FindFirstChild("Monsters")
+                for _, m in ipairs(mons and mons:GetChildren() or {}) do
+                    if m:IsA("Model") and not isDessa(m) and flagOn(m, "Chasing") and not flagOn(m, "LostInterest") and chasesMe(m) ~= false then
+                        n += 1; set[m] = true
+                        if not watch.set[m] then watch.spottedUntil = now + 1 end      -- it wasn't chasing you a moment ago: it just spotted you
+                    end
+                end
+            end
+        end
+        watch.n, watch.set = n, set
+        return watch
+    end
+
+    -- ---------------------------------------------------------- CHASE SAFETY
+    -- While any Twisted (not Dessa) is chasing you and you are on a machine, you are taken off it: the same "Stop" the machine's Stop button sends
+    -- (the button itself is locked during a skill check, this is not), then the game's own client-side unwind, which aborts a skill check in progress.
+    -- Because it checks every frame, starting a machine while chased gets you kicked straight back off.
+    local cq = { last = 0 }
     local function chaseQuit()
         if os.clock() - cq.last < 0.4 then return end
         local ch = LP.Character
         local dec = ch and ch:FindFirstChild("Decoding")
         local machine = dec and dec:IsA("ObjectValue") and dec.Value or nil
         if not (machine and machine.Parent) then return end      -- not on a machine
-        local n = realChaseCount()
+        local n = chaseWatch().n
         if n <= 0 then return end
         cq.last = os.clock()
         local stats = machine:FindFirstChild("Stats")
@@ -2769,12 +2805,47 @@ do
         if Auto.onChaseQuit then pcall(Auto.onChaseQuit, "A Twisted is chasing you. Chase Safety took you off the machine.") end
     end
 
+    -- ---------------------------------------------------------- AUTO ABILITY
+    -- Uses your ability the moment it is ready (cooldown over), or only when the conditions you picked are met. It presses the ability the way the HUD
+    -- button does, so the game still applies its own rules (round only, no use while in the elevator, targeting, ...). Toggle abilities are left alone.
+    local HP
+    local aa = { last = 0 }
+    local function autoAbility()
+        local A = Auto.Ability
+        local now = os.clock()
+        if A.Custom then chaseWatch() end         -- watched every frame, even on cooldown, so "just spotted" really means just now and not "the cooldown just ended mid-chase"
+        if now - aa.last < 1 then return end      -- if the game refuses a cast it won't be retried more than once a second
+        local ch = LP.Character
+        if not (ch and ch.Parent == Workspace:FindFirstChild("InGamePlayers")) then A.Status = "Waiting for a round"; return end
+        if ch:GetAttribute("HasToggleAbility") == true then A.Status = "Your ability is a toggle, so it is never used automatically"; return end
+        if not HP then HP = try(require, ReplicatedStorage.SharedUtils.HudPort) end
+        local ab = HP and HP.get("Ability")
+        if not ab then A.Status = "The ability button isn't ready yet"; return end
+        local left = tonumber(ab:get("cooldownRemaining")) or 0
+        if left > 0 or ab:get("cooldownLocked") == true or ab:get("elevatorDrop") == true then
+            A.Status = left > 0 and string.format("Cooldown, %.0fs left", left) or "Can't be used right now"
+            return
+        end
+        if A.Custom then
+            local w = chaseWatch()
+            local picks, hits = 0, 0
+            if A.Spotted then picks += 1; if now < w.spottedUntil then hits += 1 end end
+            if A.Chasing then picks += 1; if w.n > 0 then hits += 1 end end
+            if picks == 0 then A.Status = "Ready, but no conditions are picked"; return end
+            if not ((A.All and hits == picks) or (not A.All and hits > 0)) then A.Status = "Ready, waiting for the conditions"; return end
+        end
+        aa.last = now
+        pcall(ab.fire, ab, "activated")
+        A.Status = "Used your ability"
+    end
+
     -- ---------------------------------------------------------- MAIN LOOP
     local tmr = 0
     connect(RunService.RenderStepped, function(dt)
         if not alive then return end
         dt = math.min(dt, 0.1)
         if Auto.ChaseQuit then pcall(chaseQuit) end
+        if Auto.Ability.On then pcall(autoAbility) end
         tmr = tmr + dt
         if tmr > 0.3 then tmr = 0; pcall(maintainWrap) end
         if Auto.Default then pcall(stepDefault) else dflt.last = nil end
@@ -4583,6 +4654,81 @@ do
 end
 
 --#endregion chat-engine
+--#region ctrllock-engine
+----------------------------------------------------------------------
+-- CTRLLOCK  (Fun > Camera)
+-- Shift lock on Left Ctrl, the way Infinite Yield's ctrllock does it: Roblox's MouseLockController listens to a StringValue called BoundKeys
+-- (default "LeftShift,RightShift"), so pointing that at "LeftControl" moves shift lock off Shift (which is sprint in this game).
+-- This game also turns shift lock off for you (Player.DevEnableMouseLock is false), so while Ctrllock is on that is switched back on too.
+-- Turning Ctrllock off puts both back exactly as they were.
+----------------------------------------------------------------------
+Fun.Ctrl = { On = false }
+do
+    local Ctrl = Fun.Ctrl
+    local orig = { keys = nil, dev = nil }
+    local DEFAULT_KEYS = "LeftShift,RightShift"      -- Roblox's own default
+
+    local function controller()
+        local ps = LP:FindFirstChild("PlayerScripts")
+        local pm = ps and ps:FindFirstChild("PlayerModule")
+        local cm = pm and pm:FindFirstChild("CameraModule")
+        return cm and cm:FindFirstChild("MouseLockController")
+    end
+
+    local function boundKeys(create)
+        local c = controller()
+        if not c then return nil end
+        local bk = c:FindFirstChild("BoundKeys")
+        if not bk and create then
+            bk = Instance.new("StringValue")
+            bk.Name = "BoundKeys"
+            bk.Value = DEFAULT_KEYS
+            bk.Parent = c
+        end
+        return bk
+    end
+
+    local function apply()
+        local bk = boundKeys(true)
+        if not bk then return false end
+        if orig.keys == nil and bk.Value ~= "LeftControl" then orig.keys = bk.Value end
+        if bk.Value ~= "LeftControl" then bk.Value = "LeftControl" end
+        if orig.dev == nil then orig.dev = LP.DevEnableMouseLock end
+        if not LP.DevEnableMouseLock then pcall(function() LP.DevEnableMouseLock = true end) end
+        return true
+    end
+
+    local function undo()
+        local bk = boundKeys(false)
+        if bk then
+            if orig.keys then bk.Value = orig.keys elseif bk.Value == "LeftControl" then bk.Value = DEFAULT_KEYS end
+        end
+        if orig.dev ~= nil then pcall(function() LP.DevEnableMouseLock = orig.dev end) end
+        orig.keys, orig.dev = nil, nil
+    end
+
+    function Ctrl.Set(v)
+        Ctrl.On = v and true or false
+        if Ctrl.On then pcall(apply) else pcall(undo) end
+    end
+    function Ctrl.status()
+        if not Ctrl.On then return "info", "Off. Shift lock is back on Shift." end
+        if not controller() then return "warn", "On, but the camera module wasn't found." end
+        local bk = boundKeys(false)
+        if bk and bk.Value == "LeftControl" and LP.DevEnableMouseLock then return "safe", "On. Press Left Ctrl to lock the camera, and again to unlock." end
+        return "warn", "On, setting things up..."
+    end
+    function Ctrl.Unload() Ctrl.On = false; pcall(undo) end
+
+    task.spawn(function()      -- the game or a respawn can undo either setting, so while it is on they are put back every second
+        while alive do
+            if Ctrl.On then pcall(apply) end
+            task.wait(1)
+        end
+    end)
+end
+
+--#endregion ctrllock-engine
 --#region ui-core
 ----------------------------------------------------------------------
 -- UI CORE
@@ -5639,7 +5785,11 @@ UI.hints = {
     ["Highlight Myself"] = "Highlights you too, for the self-obsessed.",
     ["Hide Completed Machines"] = "Finished machines stop glowing, so you only see the ones left.",
     ["Hide Used Doors"] = "Used Trick or Treat doors lose their highlight.",
-    ["Force Quit Machine When A Twisted Chases You"] = "Takes you off the machine the moment a real Twisted is chasing you, even mid skill check.",
+    ["Force Quit Machine When A Twisted Chases You"] = "Takes you off the machine the moment a Twisted (not Dessa) is chasing you, even mid skill check.",
+    ["Auto Ability"] = "Uses your ability for you, as soon as it's ready or only when the conditions you pick are met.",
+    ["When Immediately Spotted By A Twisted"] = "True for about a second after a Twisted (not Dessa) starts chasing you.",
+    ["While A Twisted Is Chasing Me"] = "True for as long as a Twisted (not Dessa) is chasing you and hasn't lost interest.",
+    ["Ctrllock"] = "Shift lock on Left Ctrl instead of Shift (Shift is sprint). Press Left Ctrl to lock and unlock the camera.",
     ["Enable Blotspeak"] = "Everything you type in chat is sent backwards. Commands that start with / are left alone.",
     ["Include Shop Items"] = "Also highlight the items for sale in the elevator shop (the models in Slot1, Slot2 and Slot3).",
     ["Shop Item Colors"] = "Like Normal Items, one color for all shop items, or by whether you have enough Tapes for each one.",
@@ -6342,6 +6492,18 @@ function UI.buildChatPage()
     }
 end
 
+-- Fun > Camera
+function UI.buildCameraPage()
+    return {
+        { title = "Ctrllock", controls = {
+            { t = "text", text = "Moves shift lock from Shift to Left Ctrl, so you can use it without sprinting. Press Left Ctrl to lock the camera behind your character and press it again to unlock. It works like Infinite Yield's ctrllock: it changes the key that shift lock listens for. The game switches shift lock off, so turning this on switches it back on, and turning this off puts the key and that setting back the way they were." },
+            { t = "toggle", text = "Ctrllock", get = function() return Fun.Ctrl.On end,
+                set = function(v) Fun.Ctrl.Set(v); toast(v and "Ctrllock on. Left Ctrl toggles shift lock." or "Ctrllock off.", "info") end },
+            { t = "livetext", get = function() return Fun.Ctrl.status() end },
+        } },
+    }
+end
+
 local cfgState = { name = "", box = nil }
 --#endregion page-movement
 --#region page-configs
@@ -6672,10 +6834,31 @@ local function buildAutomationPage()
                 get = function() return Auto.InstantDelay end, set = function(v) Auto.InstantDelay = v end },
         } },
         { title = "Chase Safety", controls = {
-            { t = "text", text = "Takes you off the machine the instant any Twisted is chasing you. It works mid skill check too, and if you start extracting while a Twisted is chasing you, you are kicked straight off again. Your own Pursuer doesn't count, only real Twisteds." },
+            { t = "text", text = "Takes you off the machine the instant any Twisted is chasing you. It works mid skill check too, and if you start extracting while a Twisted is chasing you, you are kicked straight off again. Twisted Dessa doesn't count (she always comes for you once and only hurts with her charged attacks, so those are the only time you need to get off), and neither does your own Pursuer." },
             { t = "toggle", text = "Force Quit Machine When A Twisted Chases You", get = function() return Auto.ChaseQuit end,
                 set = function(v) Auto.ChaseQuit = v; Auto.Status = v and "Chase Safety on" or "Chase Safety off" end },
         } },
+        { title = "Auto Ability", controls = (function()
+            local A = Auto.Ability
+            local ctl = {
+                { t = "text", text = "Uses your ability for you. Either the moment its cooldown is over, or only when the conditions you pick are met. Twisted Dessa never counts toward a condition. Toggle abilities are never used automatically." },
+                { t = "toggle", text = "Auto Ability", get = function() return A.On end,
+                    set = function(v) A.On = v; A.Status = v and "On" or "Off" end },
+                { t = "dropdown", text = "Use It", get = function() return A.Custom and "Only When Conditions Are Met" or "As Soon As It's Ready" end,
+                    options = function() return { "As Soon As It's Ready", "Only When Conditions Are Met" } end,
+                    set = function(o) A.Custom = (o == "Only When Conditions Are Met"); refreshPage() end },
+            }
+            if A.Custom then
+                ctl[#ctl + 1] = { t = "dropdown", text = "Conditions Needed", get = function() return A.All and "All Of The Ones I Pick" or "Any One Of The Ones I Pick" end,
+                    options = function() return { "Any One Of The Ones I Pick", "All Of The Ones I Pick" } end,
+                    set = function(o) A.All = (o == "All Of The Ones I Pick"); refreshPage() end }
+                ctl[#ctl + 1] = { t = "toggle", text = "When Immediately Spotted By A Twisted", get = function() return A.Spotted end, set = function(v) A.Spotted = v end }
+                ctl[#ctl + 1] = { t = "toggle", text = "While A Twisted Is Chasing Me", get = function() return A.Chasing end, set = function(v) A.Chasing = v end }
+                ctl[#ctl + 1] = { t = "text", text = "Immediately spotted: the moment a Twisted starts chasing you (it only stays true for about a second). While chasing: for as long as a Twisted is still chasing you and hasn't lost interest. If you pick nothing, it waits and never fires." }
+            end
+            ctl[#ctl + 1] = { t = "readout", text = "Auto Ability", get = function() return A.Status end }
+            return ctl
+        end)() },
         { title = "Status", controls = {
             { t = "readout", text = "Last Action", get = function() return Auto.Status end },
         } },
@@ -11855,7 +12038,9 @@ Features.switches = {
             SpeedModifier = Speed.Enabled, InfiniteStamina = Stam.Infinite, AutoRun = Stam.AutoRun,
             Noclip = SP.noclipOn(), Fullbright = SP.fullbrightOn(), HideIchorSplats = SP.hideIchorOn(), Adblocker = SP.adblockOn(),
             AutoDefault = Auto.Default, AutoCircle = Auto.Circle, AutoTreadmill = Auto.Treadmill, AutoSwimmy = Auto.Swimmy, AutoInstant = Auto.Instant,
-            Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled, Blotspeak = Fun.Blot.Enabled, ChaseQuit = Auto.ChaseQuit,
+            Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled, Blotspeak = Fun.Blot.Enabled, ChaseQuit = Auto.ChaseQuit, Ctrllock = Fun.Ctrl.On,
+            AutoAbility = Auto.Ability.On, AutoAbilityCustom = Auto.Ability.Custom, AutoAbilityAll = Auto.Ability.All,
+            AutoAbilitySpotted = Auto.Ability.Spotted, AutoAbilityChasing = Auto.Ability.Chasing,
         }
     end,
     apply = function(d)
@@ -11880,6 +12065,10 @@ Features.switches = {
         if has("MoreSkillChecks") then Fun.Enabled = d.MoreSkillChecks; Fun.Status = d.MoreSkillChecks and "On" or "Off" end
         if has("Blotspeak") then Fun.Blot.Set(d.Blotspeak) end
         if has("ChaseQuit") then Auto.ChaseQuit = d.ChaseQuit == true end
+        if has("Ctrllock") then Fun.Ctrl.Set(d.Ctrllock) end
+        for k, key in pairs({ AutoAbility = "On", AutoAbilityCustom = "Custom", AutoAbilityAll = "All", AutoAbilitySpotted = "Spotted", AutoAbilityChasing = "Chasing" }) do
+            if has(k) then Auto.Ability[key] = d[k] end
+        end
     end,
 }
 Features.customizer = { serialize = function() return Cust.serialize() end, apply = function(d) Cust.apply(d) end }
@@ -11964,6 +12153,7 @@ UI.tabs = {
     { id = "fun",        name = "Skill Checks", cat = "fun",      icon = "fun",        build = grouped(buildFunPage, SKILL_GROUPS) },
     { id = "pursuer",    name = "Pursuer",      cat = "fun",      icon = "fun",        build = grouped(buildPursuerPage, PURSUER_GROUPS) },
     { id = "chat",       name = "Chat",         cat = "fun",      icon = "fun",        build = UI.buildChatPage },
+    { id = "camera",     name = "Camera",       cat = "fun",      icon = "fun",        build = UI.buildCameraPage },
     { id = "animations", name = "Animations",   cat = "fun",      icon = "fun",        build = UI.buildAnimationsPage },
     -- Configs
     { id = "configs",    name = "Configs",      cat = "configs",  icon = "configs",    build = buildConfigsPage },
@@ -12644,6 +12834,7 @@ function Destroy()
     pcall(Auto.Unload)
     pcall(Cust.Destroy)
     pcall(Fun.Blot.Unload)
+    pcall(Fun.Ctrl.Unload)
     pcall(UI.snd.Destroy)
     pcall(UI.binds.destroy)
     pcall(function() sndHolder:Destroy() end)
