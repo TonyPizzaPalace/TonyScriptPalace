@@ -6910,6 +6910,11 @@ local function buildAutomationPage()
             { t = "slider", text = "Response Delay (Seconds)", min = 0, max = 2, dec = 2, step = 0.05,
                 get = function() return Auto.InstantDelay end, set = function(v) Auto.InstantDelay = v end },
     }
+    local chaseSafety = {
+            { t = "text", text = "Gets you off the machine the instant any Twisted starts chasing you. It works mid skill check too, and if you start extracting while a Twisted is chasing you, you get kicked right back off. Twisted Dessa doesn't count (she always comes for you once and only hurts with her charged attacks, so that's the only time you need to get off), and neither does your own Pursuer." },
+            { t = "toggle", text = "Force Quit Machine When A Twisted Chases You", get = function() return Auto.ChaseQuit end,
+                set = function(v) Auto.ChaseQuit = v; Auto.Status = v and "Chase Safety on" or "Chase Safety off" end },
+    }
     local function head(t) return { t = "text", text = t, font = "bold" } end
     local function cat(...)
         local out = {}
@@ -6921,12 +6926,8 @@ local function buildAutomationPage()
             { head("Auto Skill Checks") }, skillChecks,
             { head("Swimmy Barnaby") }, swimmy,
             { head("Auto Run (Treadmill Machines)") }, autoRun,
-            { head("Instant Calibration Success") }, instantCal) },
-        { title = "Chase Safety", controls = {
-            { t = "text", text = "Gets you off the machine the instant any Twisted starts chasing you. It works mid skill check too, and if you start extracting while a Twisted is chasing you, you get kicked right back off. Twisted Dessa doesn't count (she always comes for you once and only hurts with her charged attacks, so that's the only time you need to get off), and neither does your own Pursuer." },
-            { t = "toggle", text = "Force Quit Machine When A Twisted Chases You", get = function() return Auto.ChaseQuit end,
-                set = function(v) Auto.ChaseQuit = v; Auto.Status = v and "Chase Safety on" or "Chase Safety off" end },
-        } },
+            { head("Instant Calibration Success") }, instantCal,
+            { head("Chase Safety") }, chaseSafety) },
         { title = "Ability", controls = (function()
             local A = Auto.Ability
             local I = Auto.Inspire
@@ -6948,7 +6949,7 @@ local function buildAutomationPage()
                 ctl[#ctl + 1] = { t = "text", text = "Immediately spotted: the moment a Twisted starts chasing you (only stays true for about a second). While chasing: for as long as a Twisted is still chasing you and hasn't lost interest. If you pick nothing, it waits forever and never fires." }
             end
             ctl[#ctl + 1] = { t = "readout", text = "Auto Ability", get = function() return A.Status end }
-            ctl[#ctl + 1] = head("Brusha: Inspire")
+            ctl[#ctl + 1] = head("Brusha: Artistic Inspiration")
             ctl[#ctl + 1] = { t = "text", text = "Only matters when you play Brusha. Her ability starts a painting minigame on the machine, where you swipe the mouse back and forth. Auto Inspire does the swiping for you, and the minigame still plays out on screen. Instant Inspire skips it completely and inspires the machine the moment you use your ability (it wins if both are on). Pair either one with Auto Ability and she paints every machine on her own." }
             ctl[#ctl + 1] = { t = "toggle", text = "Auto Inspire", get = function() return I.Auto end,
                 set = function(v) I.Auto = v; Auto.Status = v and "Auto Inspire on" or "Auto Inspire off" end }
@@ -11741,6 +11742,7 @@ Binds.renames = {
     { "^automation|Swimmy Barnaby|", "automation|Machines|" },
     { "^automation|Auto Run %(Treadmill Machines%)|", "automation|Machines|" },
     { "^automation|Instant Calibration Success|", "automation|Machines|" },
+    { "^automation|Chase Safety|", "automation|Machines|" },
     { "^automation|Auto Ability|", "automation|Ability|" },
 }
 function Binds.fixId(id)
