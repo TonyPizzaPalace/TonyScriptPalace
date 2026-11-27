@@ -920,7 +920,10 @@ local Fun = {
     DazedBlock = false,                 -- also block sprinting while it lasts (the game's client code has such a block)
     ShowDazed = false,                  -- the game does not normally show Dazed above your head, so this is opt-in
     CustomIcons = false,                -- icons for effects the game has no buff for (flat/multiplier boosts, Magnifying Glass)
-    Rewards = false, RewardMode = "Skill Check Stat", RewardStat = "Skill Check Value",
+    TreadmillSweat = true,              -- while an extra treadmill check is up your character sweats (the game's own sweat drops), like on a real treadmill
+    TreadmillAnim = true,               -- ... and your walk/run animation plays much faster
+    TreadmillAnimSpeed = 3,             -- how many times faster
+    Rewards = false, RewardOn = "Yellow Hits Only", RewardMode = "Skill Check Stat", RewardStat = "Skill Check Value",   -- RewardOn: Yellow Hits Only | Green And Yellow Hits
     RewardWalk = 2, RewardRun = 2, RewardWalkPct = 10, RewardRunPct = 5, EnergizedTier = "I", EnergizedPct = 25, RewardTime = 3,
     Penalties = false, PenaltyMode = "Slow",
     PenaltyWalk = 2, PenaltyRun = 2, PenaltyWalkPct = 10, PenaltyRunPct = 10, SlowTier = "II", SlowPct = 25, PenaltyTime = 3,
@@ -929,6 +932,8 @@ local Fun = {
     Icons = true,
     Status = "Off",
     fx = {}, dazedUntil = 0,
+    rt = { boost = 1 },                 -- runtime only (tables are never saved): the animation speed multiplier an active treadmill check asks for
+    REWARD_ON = { "Yellow Hits Only", "Green And Yellow Hits" },
 }
 local FUN_WHEN = { "Always", "While Not Idle", "While Chased" }
 local FUN_AUTO = { "Stat", "Manual" }
@@ -984,6 +989,7 @@ function Fun.mods(running)
     return flat, pct, mul
 end
 function Fun.dazed() return os.clock() < Fun.dazedUntil end
+function Fun.animBoostNow() local b = Fun.rt.boost; return (type(b) == "number" and b > 1.001) and b or 1 end
 function Fun.activeCount() local n = 0; local now = os.clock(); for _, e in ipairs(Fun.fx) do if e.expires > now then n = n + 1 end end; return n end
 
 --#endregion fun-settings
@@ -1509,25 +1515,31 @@ do
     local function animSync(ch, hum, stats, running)
         local A = Speed.Anim
         local animator = hum:FindFirstChildOfClass("Animator")
-        if not (A.On and animator) then an.mult = 1; animRestore(); return end
+        local boost = Fun.animBoostNow()          -- an extra treadmill check wants a fast walk/run animation (works even with Animation Sync off)
+        local syncOn = A.On
+        if not (animator and (syncOn or boost > 1)) then an.mult = 1; animRestore(); return end
         if as.ch ~= ch then as.ch = ch; as.names = {}; as.base = nil end
-        local base = animBase(ch, stats)
-        local hs = hum.WalkSpeed
-        local wBase = base.walk or statNum(stats, "WalkSpeed", hs)
-        local rBase = base.run or statNum(stats, "RunSpeed", hs)
-        local wm = math.clamp(hs / math.max(wBase, 0.01), 0.25, 3)
-        local rm = math.clamp(hs / math.max(rBase, 0.01), 0.25, 3)
+        local wm, rm, dm = 1, 1, 1
+        if syncOn then
+            local base = animBase(ch, stats)
+            local hs = hum.WalkSpeed
+            local wBase = base.walk or statNum(stats, "WalkSpeed", hs)
+            local rBase = base.run or statNum(stats, "RunSpeed", hs)
+            wm = math.clamp(hs / math.max(wBase, 0.01), 0.25, 3)
+            rm = math.clamp(hs / math.max(rBase, 0.01), 0.25, 3)
+            dm = math.clamp(statNum(stats, "DecodeSpeedModifier", 1), 0.25, 3)
+        end
         if running then wm = 1 else rm = 1 end   -- only the state you are in follows your speed, so a fading Walk or Run track is not stretched
+        if running then rm = rm * boost else wm = wm * boost end
         an.mult = running and rm or 1             -- the fake run (Infinite Stamina with no stamina left) plays its own Run track; runAnim reads this to speed it up
-        local dm = math.clamp(statNum(stats, "DecodeSpeedModifier", 1), 0.25, 3)
         local moving = hum.MoveDirection.Magnitude > 0.01
         local dec = ch:FindFirstChild("Decoding")
         local decoding = dec ~= nil and dec:IsA("ObjectValue") and dec.Value ~= nil
         local abilityM = nil
-        if A.Ability then
+        if syncOn and A.Ability then
             if decoding then abilityM = dm elseif moving then abilityM = running and rm or wm end
         end
-        local mult = { Walk = wm, Run = rm, Decode = dm, Ability = abilityM }
+        local mult = { Walk = wm, Run = rm, Decode = syncOn and dm or nil, Ability = abilityM }
         local seen = {}
         for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
             if tr == an.track then      -- the fake run track: runAnim sets its speed (writing it here too would be undone every frame)
@@ -1554,7 +1566,11 @@ do
         as.active = true
         local parts = {}
         for _, k in ipairs({ "Walk", "Run", "Decode", "Ability" }) do if seen[k] then parts[#parts + 1] = string.format("%s x%.2f", k, seen[k]) end end
-        SP.animSt = { on = true, text = (#parts > 0 and ("Syncing: " .. table.concat(parts, ", ")) or "On, waiting for a walk, run or extraction animation") .. "  |  Base speeds from " .. base.info }
+        if syncOn then
+            SP.animSt = { on = true, text = (#parts > 0 and ("Syncing: " .. table.concat(parts, ", ")) or "On, waiting for a walk, run or extraction animation") .. "  |  Base speeds from " .. (as.base and as.base.info or "?") }
+        else
+            SP.animSt = { on = false, text = "Off (a treadmill skill check is speeding up your walk/run animation)" }
+        end
     end
 
     local function step()
@@ -2979,20 +2995,18 @@ end
 -- Circle/Treadmill : the game's own SkillCheckController.handleInvoke, fed the same config the server sends.
 ----------------------------------------------------------------------
 do
-    local GC, IS, SCC, TouchBtn, Audio
+    local GC, IS, SCC, TouchBtn, Audio, Skillchecks
     local function lazy()
         if not GC then GC = try(require, ReplicatedStorage.Modules.Core.GameContext) end
         if not IS then IS = try(require, ReplicatedStorage.SharedUtils.InputService) end
         if not SCC then SCC = try(require, ReplicatedStorage.Modules.ClientUI.SkillCheckController) end
         if not TouchBtn then TouchBtn = try(require, ReplicatedStorage.Modules.Gameplay.SkillCheckTouchButton) end
         if not Audio then Audio = try(require, ReplicatedStorage.SharedUtils.Audio) end
-        return (GC and IS and SCC and Audio) and true or false
-    end
-
-    local function menu()
-        local pg = LP:FindFirstChild("PlayerGui")
-        local sg = pg and pg:FindFirstChild("ScreenGui")
-        return sg and sg:FindFirstChild("Menu")
+        if not Skillchecks then   -- the post-update HUD: every skill check is drawn by PlayerGui.Skillchecks, which listens to this port
+            local hp = try(require, ReplicatedStorage.SharedUtils.HudPort)
+            Skillchecks = hp and try(hp.get, "Skillchecks")
+        end
+        return (GC and IS and SCC and Audio and Skillchecks) and true or false
     end
     local function charStats() local ch = LP.Character; return ch, ch and ch:FindFirstChild("Stats") end
     local function statv(stats, name, d)
@@ -3084,27 +3098,14 @@ do
     end
 
     ------------------------------------------------------------------
-    -- feedback text (same look as the game's own)
+    -- feedback + treadmill effects
+    -- The game's HUD (PlayerGui.Skillchecks) is driven through the "Skillchecks" HudPort: the Horizontal widget draws the bar
+    -- (green RequiredArea, yellow GoldArea, Marker), the Shared widget shows "Great Job!" / "Good Job!" / the miss text.
     ------------------------------------------------------------------
-    local msgTok = 0
-    local function message(text, win, hold)
-        local m = menu(); local msg = m and m:FindFirstChild("SkillCheckMessage")
-        if not msg then return end
-        msgTok = msgTok + 1; local my = msgTok
-        task.spawn(function()
-            pcall(function()
-                msg.Text = text
-                local g, gw = msg:FindFirstChild("UIGradient"), msg:FindFirstChild("UIGradientWin")
-                if g then g.Enabled = not win end
-                if gw then gw.Enabled = win end
-                msg.Visible = true; msg.TextTransparency = 0; msg.TextStrokeTransparency = 0
-                task.wait(hold)
-                if my ~= msgTok then return end
-                local tw = TweenService:Create(msg, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = 1, TextStrokeTransparency = 1 })
-                tw:Play(); tw.Completed:Wait()
-                if my == msgTok then msg.Visible = false end
-            end)
-        end)
+    local function outcomeName(kind, o)       -- what the status line calls a result
+        if o == "great" then return "yellow" end
+        if o == "good" then return kind == "circle" and "grey" or (kind == "treadmill" and "complete" or "green") end
+        return "fail"
     end
     local function failFeedback()
         -- like the game: a Mime Makeup that is equipped changes the text and the sound, whatever the modification settings are
@@ -3115,90 +3116,130 @@ do
             local d = mod and try(require, mod)
             if type(d) == "table" then text = d.GeneratorText or text; sound = d.GeneratorSound end
         end
-        local m = menu()
         pcall(function()
-            if sound then Audio:Play(sound, { Parent = m and m.Parent }) else Audio:Play("Sounds.UI.SkillCheck.Wrong") end
+            if sound then Audio:Play(sound, { Parent = game:GetService("SoundService") }) else Audio:Play("Sounds.UI.SkillCheck.Wrong") end
         end)
-        message(text, false, 2)
+        pcall(function() Skillchecks:fire("result", "miss", text) end)
+    end
+
+    -- Treadmill check effects. The real treadmill makes you sweat and plays your walk/run animation much faster; that is done by the
+    -- server on a machine, so an extra check has to fake it. Visual only: only you see it.
+    local fxc = { emitter = nil, att = nil }
+    local function fxStop()
+        Fun.rt.boost = 1                                           -- Animation Sync (movement engine) reads this and puts the tracks back
+        local em, att = fxc.emitter, fxc.att
+        fxc.emitter, fxc.att = nil, nil
+        if em then pcall(function() em.Enabled = false; em:Destroy() end) end
+        if att then pcall(function() att:Destroy() end) end
+    end
+    local function fxStart()
+        fxStop()
+        if Fun.TreadmillAnim then Fun.rt.boost = math.clamp(Fun.TreadmillAnimSpeed, 1, 8) end
+        if not Fun.TreadmillSweat then return end
+        local head = LP.Character and LP.Character:FindFirstChild("Head")
+        if not head then return end
+        local parts = ReplicatedStorage:FindFirstChild("Parts")
+        local drops = parts and parts:FindFirstChild("Drops")                       -- the game's own sweat drop emitter
+        local src = drops and drops:FindFirstChildWhichIsA("ParticleEmitter", true)
+        local em
+        if src then em = src:Clone()
+        else
+            em = Instance.new("ParticleEmitter")
+            em.Texture = "rbxasset://textures/particles/sparkles_main.dds"; em.Lifetime = NumberRange.new(0.5, 1)
+            em.Speed = NumberRange.new(2, 4); em.SpreadAngle = Vector2.new(15, 15); em.Color = ColorSequence.new(Color3.fromRGB(173, 216, 230))
+            em.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(0.5, 0.5), NumberSequenceKeypoint.new(1, 0.1) })
+        end
+        local att = head:FindFirstChild("HatAttachment") or head:FindFirstChild("HairAttachment") or head:FindFirstChild("FaceFrontAttachment") or head:FindFirstChildOfClass("Attachment")
+        if not att then
+            att = Instance.new("Attachment"); att.Name = "TSP_SweatAttachment"; att.Position = Vector3.new(0, 0.5, 0); att.Parent = head
+            fxc.att = att
+        end
+        em.Name = "TSP_SweatDrops"; em.Rate = math.max(em.Rate, 12); em.Enabled = true; em.Parent = att
+        pcall(function() em:Emit(20) end)
+        fxc.emitter = em
     end
 
     ------------------------------------------------------------------
-    -- the default (horizontal bar) check
+    -- the default (horizontal bar) check, played on the game's own HUD
+    -- The game only runs its version while you are on a machine, so this does the same steps it does:
+    -- state "horizontal" puts the bar on screen and sweeps the marker, "horizontalJudge" tells us where the marker is,
+    -- "horizontalEnd" plays the hit / miss reaction, "result" shows the text.
     ------------------------------------------------------------------
-    local function overlap(a, b)
-        local s, bs = a.Position.X.Scale, b.Position.X.Scale
-        return bs <= s and s <= bs + b.Size.X.Scale
-    end
-    -- returns "gold" | "white" | "fail" | nil (aborted / could not start)
+    -- returns "great" (yellow strip) | "good" (green area) | "fail" | nil (aborted / could not start)
     local function runDefault(ratio, pos, sweep, me)
-        local m = menu()
-        local f = m and m:FindFirstChild("SkillCheckFrame")
-        local req, gold, marker = f and f:FindFirstChild("RequiredArea"), f and f:FindFirstChild("GoldArea"), f and f:FindFirstChild("Marker")
-        local cal, prompt, msg = m and m:FindFirstChild("Calibrate"), m and m:FindFirstChild("SpaceBarPromptText"), m and m:FindFirstChild("SkillCheckMessage")
-        if not (f and req and gold and marker and cal) then return nil end
-        local stop = m:FindFirstChild("StopGenerator"); if stop then stop.Visible = false end
-        f.Visible = true; cal.Visible = true
-        if prompt then prompt.Visible = true end
-        if msg then msgTok = msgTok + 1; msg.Visible = false; msg.TextTransparency = 1; msg.TextStrokeTransparency = 1 end
-        req.Size = UDim2.new(ratio, 0, 1, 0)
-        req.Position = UDim2.new(math.clamp(pos, 0.1, 0.75), 0, 0, 0)
-        gold.Size = UDim2.new(ratio / 3, 0, 1, 0)
-        gold.Position = req.Position + UDim2.new((ratio - ratio / 3) / 2, 0, 0, 0)
-        marker.Position = UDim2.new(0, 0, -0.399, 0)
-        f.Position = UDim2.new(0.35, 0, 0.8, 0)
-        req.BackgroundTransparency, gold.BackgroundTransparency, marker.BackgroundTransparency, f.BackgroundTransparency = 1, 1, 1, 1
+        local port = Skillchecks
+        if not port then return nil end
+        local reqStart = math.clamp(pos, 0.1, 0.75)
+        local goldSize = ratio / 3
+        local goldStart = reqStart + (ratio - goldSize) / 2
+        local startAt = os.clock() + 1                       -- the game waits a second before the marker moves
+        local function state()
+            return { sweepDuration = sweep, requiredStart = reqStart, requiredSize = ratio, goldStart = goldStart, goldSize = goldSize, sweepAt = startAt }
+        end
+        local function hideUI()
+            port:set("horizontal", nil); port:set("tapButton", false); port:set("promptVisible", false)
+        end
+        local function zones()                               -- is the marker in the green area, is it in the yellow strip (same call the game makes)
+            local judge = port:get("horizontalJudge")
+            if judge then
+                local okJ, r, g = pcall(judge)
+                if okJ then return r, g end
+            end
+            local t = (os.clock() - startAt) / sweep
+            return t >= reqStart and t <= reqStart + ratio, t >= goldStart and t <= goldStart + goldSize
+        end
+        port:fire("clearResult")
+        port:set("promptType", "default"); port:set("promptVisible", true); port:set("tapButton", true)
+        port:set("horizontal", state())
         pcall(function() Audio:PlayOne("Sounds.UI.SkillCheck.SkillCheck") end)
-        local ti = TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        TweenService:Create(f, ti, { Position = UDim2.new(0.35, 0, 0.78, 0) }):Play()
-        for _, o in ipairs({ f, marker, req, gold }) do pcall(function() TweenService:Create(o, ti, { Transparency = 0 }):Play() end) end
 
-        local result, done, tapped = nil, false, false
-        local conns, tween = {}, nil
+        local result, done = nil, false
+        local conns = {}
         local function cleanup()
             for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
-            if tween then pcall(function() tween:Cancel(); tween:Destroy() end) end
-            f.Visible = false; cal.Visible = false
-            if prompt and GC.currentgenerator == nil then prompt.Visible = false end
+            table.clear(conns)
         end
         me.abort = function() done = true; result = nil end
+        while os.clock() < startAt and not me.aborted do task.wait() end
+        if me.aborted then cleanup(); hideUI(); return nil end
 
-        local t0 = os.clock()
-        while os.clock() - t0 < 1 and not me.aborted do task.wait() end      -- the game waits a second before the marker moves
-        if me.aborted then cleanup(); return nil end
-
-        tween = TweenService:Create(marker, TweenInfo.new(sweep, Enum.EasingStyle.Linear), { Position = UDim2.new(1, 0, -0.399, 0) })
-        local function onTap()
-            if done or tapped then return end
-            tapped = true; done = true
-            pcall(function() tween:Pause() end)
-            local inReq, inGold = overlap(marker, req), overlap(marker, gold)
-            result = (not inReq) and "fail" or (inGold and "gold" or "white")
+        local function commit()
+            if done then return end
+            done = true
+            local inReq, inGold = zones()
+            result = inGold and "great" or (inReq and "good" or "fail")
         end
-        conns[#conns + 1] = IS:OnAction("SkillCheckTap", function() if IS:IsTyping() then return end; onTap() end)
-        if TouchBtn then conns[#conns + 1] = TouchBtn.bind(cal, function() return not done and not tapped end, onTap) end
+        conns[#conns + 1] = port:on("tap", commit)           -- the on-screen button (touch) fires this
+        conns[#conns + 1] = IS:OnAction("SkillCheckTap", function() if IS:IsTyping() then return end; commit() end)
         local inG, inR = false, false
         conns[#conns + 1] = RunService.RenderStepped:Connect(function()
-            local r = overlap(marker, req)
-            if not overlap(marker, gold) then inG = false
+            local r, g = zones()
+            if not g then inG = false
             elseif not inG then inG = true; inR = false; pcall(function() Audio:PlayOne("Sounds.UI.SkillCheck.Ticks.TinierTick") end) end
             if r and not inR and not inG then inR = true; pcall(function() Audio:PlayOne("Sounds.UI.SkillCheck.Ticks.TinyTick") end) end
         end)
-        conns[#conns + 1] = tween.Completed:Connect(function(state)
-            if not done and state == Enum.PlaybackState.Completed then done = true; result = "fail" end   -- ran out without a tap
+        local timer = task.delay(math.max(0, startAt + sweep - os.clock()), function()
+            if not done then done = true; result = "fail" end          -- ran out without a tap
         end)
-        tween:Play()
+        conns[#conns + 1] = { Disconnect = function() pcall(task.cancel, timer) end }
+
         while not done and not me.aborted do
             task.wait()
-            if not f.Visible then f.Visible = true; cal.Visible = true end   -- something else hid it (the spotted handler when the setting is off)
+            if not done and port:get("horizontal") == nil then         -- something took the bar off screen (the game's spotted / hit cancel)
+                if Fun.CancelWhenSpotted then Fun.Status = "Aborted: the game cancelled it"; me.aborted = true; break end
+                port:set("horizontal", state()); port:set("tapButton", true)
+            end
         end
         cleanup()
-        if me.aborted then return nil end
-        if result == "gold" then
+        if me.aborted then hideUI(); return nil end
+        port:fire("horizontalEnd", result == "great" and "great" or (result == "good" and "good" or "miss"))
+        hideUI()
+        if result == "great" then
             pcall(function() Audio:PlayOne("Sounds.UI.SkillCheck.Correct"); Audio:PlayOne("Sounds.UI.SkillCheck.GoldAreaHit") end)
-            message("Great Job!", true, 1)
-        elseif result == "white" then
+            pcall(function() port:fire("result", "great") end)
+        elseif result == "good" then
             pcall(function() Audio:PlayOne("Sounds.UI.SkillCheck.Correct") end)
-            message("Good Job!", false, 1)
+            pcall(function() port:fire("result", "good") end)
         else
             failFeedback()
         end
@@ -3214,7 +3255,7 @@ do
         if outcome ~= "fail" and Fun.Trinkets and equipped("MagnifyingGlass") then
             Fun.add("mag", { basePct = 0.04, hud = "Energized", label = "Magnifying Glass" }, Fun.MagTime)
         end
-        if outcome == "gold" and Fun.Rewards then
+        if Fun.Rewards and (outcome == "great" or (outcome == "good" and Fun.RewardOn == "Green And Yellow Hits")) then
             local m = Fun.RewardMode
             if m == "Skill Check Stat" then
                 local v = rewardFlat(stats)
@@ -3294,6 +3335,7 @@ do
         if doorOrig then SCC.isDoorCheckActive = doorOrig; doorOrig = nil end
     end
     local function release(hold)
+        pcall(fxStop)
         guardOff()
         setPrompts(false)
         cur = nil
@@ -3331,6 +3373,7 @@ do
         setPrompts(true)                                  -- machines cannot be started while a check is up
         guardOn()
         Fun.Status = "Playing a " .. kind .. " check"
+        if kind == "treadmill" then pcall(fxStart) end    -- sweat + fast walk/run animation for as long as the check is up
         task.spawn(function()
             local outcome
             local ok, err = pcall(function()
@@ -3349,13 +3392,13 @@ do
                     local res = SCC.handleInvoke(true, cfg)
                     if me.aborted then return end
                     -- the handler returns "supercomplete" (great), true (good), false (miss), "noinput" (ran out) or "forcestopped"
-                    if res == "supercomplete" then outcome = "gold"
-                    elseif res == true then outcome = "white"
+                    if res == "supercomplete" then outcome = "great"       -- yellow zone
+                    elseif res == true then outcome = "good"                -- grey zone
                     elseif res == false or res == "noinput" then outcome = "fail" end
                 else
                     local res = SCC.handleInvoke(true, { type = "treadmill", boundarySize = math.max(c.size, 1), animationBoost = 1 })
                     if me.aborted then return end
-                    if res == true then outcome = "white"
+                    if res == true then outcome = "good"
                     elseif res == false or res == "noinput" then outcome = "fail" end
                 end
             end)
@@ -3367,7 +3410,7 @@ do
             if not aborted and outcome then
                 local _, stats2 = charStats()
                 pcall(applyOutcome, kind, outcome, stats2 or stats)
-                if Fun.Status:sub(1, 7) ~= "Mime Ma" and Fun.Status:sub(1, 7) ~= "Train W" then Fun.Status = "Last check: " .. kind .. " " .. outcome end
+                if Fun.Status:sub(1, 7) ~= "Mime Ma" and Fun.Status:sub(1, 7) ~= "Train W" then Fun.Status = "Last check: " .. kind .. " " .. outcomeName(kind, outcome) end
             end
         end)
         task.delay(14, function() if cur == me then abortCheck("timed out") end end)   -- safety net
@@ -3519,6 +3562,8 @@ do
 
     function Fun.Unload()
         if cur then abortCheck("unloaded") end
+        pcall(fxStop)
+        if Skillchecks and GC and GC.currentgenerator == nil and SCC and SCC.hideCheckUI then pcall(SCC.hideCheckUI) end
         guardOff()
         setPrompts(false)
         if GC and GC.currentgenerator == nil then pcall(function() GC.skillchecking = false end) end
@@ -5934,7 +5979,10 @@ UI.hints = {
     ["Treadmill Skill Check"] = "Lets the treadmill check show up as an extra check.",
     ["Minimum Seconds Between Checks"] = "Breathing room between extra checks.",
     ["Count Twisteds"] = "Which Twisteds count toward the per-Twisted changes.",
-    ["Gold Skill Check Rewards"] = "Bonus rewards when you land a gold hit.",
+    ["Green/Yellow Skill Check Rewards"] = "Bonus rewards when you land a yellow hit (or a green one too, if you pick that).",
+    ["Give Rewards On"] = "Yellow hits only, or any successful hit.",
+    ["Treadmill Check Makes You Sweat"] = "Sweat drops while an extra treadmill check is up, like the real one. Only you see them.",
+    ["Treadmill Check Speeds Up Walk/Run Animation"] = "Fast walk and run animation during an extra treadmill check, like the real one. Only you see it.",
     ["Skill Check Failure Penalties"] = "What failing an extra check costs you. Sadness not included.",
     ["Stacking"] = "What happens when the same effect hits you again.",
     ["Trinket Interactions"] = "Lets equipped trinkets mess with extra checks.",
@@ -7373,10 +7421,11 @@ local function buildFunPage()
     if Fun.ValueMode == "Manual" then tune[#tune + 1] = sl("Value", "Manual Value", 0, 3, 1, 0.5) end
 
     local rew = {
-        { t = "text", text = "Gold skill checks only (the default check's gold zone, the circle check's great ring). The treadmill check has no gold; in the real game a good one just fills the machine."},
-        tgR("Rewards", "Gold Skill Check Rewards"),
+        { t = "text", text = "Rewards for good hits on extra checks. A yellow hit is the best one: the yellow strip inside the default check's green area, or the circle check's yellow ring. Green And Yellow Hits also rewards the lesser successes: landing anywhere in the default check's green area, the circle check's grey ring, or finishing a treadmill check (the treadmill has no yellow, a good one just fills the machine)."},
+        tgR("Rewards", "Green/Yellow Skill Check Rewards"),
     }
     if Fun.Rewards then
+        rew[#rew + 1] = dd("RewardOn", "Give Rewards On", Fun.REWARD_ON)
         rew[#rew + 1] = dd("RewardMode", "Reward", FUN_REWARD_MODES, true)
         local m = Fun.RewardMode
         if m == "Skill Check Stat" then
@@ -7436,15 +7485,19 @@ local function buildFunPage()
     if Fun.Stack == "Limit" then stack[#stack + 1] = sl("StackLimit", "Stack Limit", 1, 10, 0, 1) end
 
     local trink = {
-        { t = "text", text = "Magnifying Glass: a white or gold hit gives a small speed boost (4% of your walk speed while walking, 4% of your run speed while running). Mime Makeup: failing has no penalty, as if penalties were off (its own text and sound always play when it's equipped, like in the game). Train Whistle: immune to the fake Slowness. Only trinkets you actually have equipped count."},
+        { t = "text", text = "Magnifying Glass: a green or yellow hit gives a small speed boost (4% of your walk speed while walking, 4% of your run speed while running). Mime Makeup: failing has no penalty, as if penalties were off (its own text and sound always play when it's equipped, like in the game). Train Whistle: immune to the fake Slowness. Only trinkets you actually have equipped count."},
         tgR("Trinkets", "Trinket Interactions"),
     }
     if Fun.Trinkets then trink[#trink + 1] = sl("MagTime", "Magnifying Glass Boost Duration (Seconds)", 0.5, 30, 1, 0.5) end
 
     local misc = {
-        { t = "text", text = "Per the wiki, failing a treadmill skill check gives -70% walk speed and -80% run speed (for 3 seconds in the game's code). Mime Makeup doesn't stop this in the real game, so it doesn't here either. The real one also alerts the Twisteds, which this can't do."},
-        tgR("TreadmillDazed", "Failed Treadmill Check Slows You"),
+        { t = "text", text = "While an extra treadmill check is up, the real treadmill's look is faked on your screen: your character sweats (the game's own sweat drops) and your walk and run animation plays much faster. It only lasts as long as the check, it's visual only, and only you see it. The speed boost works even with Animation Sync off."},
+        tg("TreadmillSweat", "Treadmill Check Makes You Sweat"),
+        tgR("TreadmillAnim", "Treadmill Check Speeds Up Walk/Run Animation"),
     }
+    if Fun.TreadmillAnim then misc[#misc + 1] = sl("TreadmillAnimSpeed", "Treadmill Animation Speed (x)", 1, 8, 2, 0.25) end
+    misc[#misc + 1] = { t = "text", text = "Per the wiki, failing a treadmill skill check gives -70% walk speed and -80% run speed (for 3 seconds in the game's code). Mime Makeup doesn't stop this in the real game, so it doesn't here either. The real one also alerts the Twisteds, which this can't do."}
+    misc[#misc + 1] = tgR("TreadmillDazed", "Failed Treadmill Check Slows You")
     if Fun.TreadmillDazed then
         misc[#misc + 1] = tg("TreadmillAll", "Also Apply To Failed Default And Circle Checks")
         misc[#misc + 1] = sl("TreadmillWalkPct", "Walk Speed Nerf (%)", 0, 100, 0, 1)
@@ -7464,7 +7517,7 @@ local function buildFunPage()
         { title = "Live Values", controls = live },
         { title = "Size, Speed, Chance And Value", collapsed = true, controls = tune },
         { title = "Per-Twisted Changes", collapsed = true, controls = scale },
-        { title = "Gold Rewards", collapsed = true, controls = rew },
+        { title = "Green/Yellow Rewards", collapsed = true, controls = rew },
         { title = "Failure Penalties", collapsed = true, controls = pen },
         { title = "Stacking", collapsed = true, controls = stack },
         { title = "Trinkets", collapsed = true, controls = trink },
@@ -7500,6 +7553,8 @@ Features.fun = {
         if not funIn(FUN_AUTO, Fun.ValueMode) then Fun.ValueMode = "Stat" end
         if not funIn(FUN_SPEED, Fun.SpeedMode) then Fun.SpeedMode = "Game" end
         if not funIn(FUN_REWARD_MODES, Fun.RewardMode) then Fun.RewardMode = "Skill Check Stat" end
+        if not funIn(Fun.REWARD_ON, Fun.RewardOn) then Fun.RewardOn = "Yellow Hits Only" end
+        Fun.TreadmillAnimSpeed = math.clamp(Fun.TreadmillAnimSpeed, 1, 8)
         if not funIn(FUN_REWARD_STATS, Fun.RewardStat) then Fun.RewardStat = "Skill Check Value" end
         if not funIn(FUN_PEN_MODES, Fun.PenaltyMode) then Fun.PenaltyMode = "Slow" end
         if not funIn(FUN_STACK, Fun.Stack) then Fun.Stack = "Off" end
@@ -12177,7 +12232,7 @@ local ESP_GROUPS = {
 local SKILL_GROUPS = {
     ["More Skill Checks"] = { g = "Basics", t = "Main" }, ["Live Values"] = { g = "Basics" },
     ["Size, Speed, Chance And Value"] = { g = "Tuning", t = "Size, Speed, Chance" }, ["Per-Twisted Changes"] = { g = "Tuning" },
-    ["Gold Rewards"] = { g = "Tuning" }, ["Failure Penalties"] = { g = "Tuning" },
+    ["Green/Yellow Rewards"] = { g = "Tuning" }, ["Failure Penalties"] = { g = "Tuning" },
     ["Stacking"] = { g = "Extras" }, ["Trinkets"] = { g = "Extras" }, ["Treadmill Failure And Icons"] = { g = "Extras", t = "Treadmill And Icons" },
 }
 local PURSUER_GROUPS = {
