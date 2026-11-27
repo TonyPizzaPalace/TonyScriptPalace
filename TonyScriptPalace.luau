@@ -7509,7 +7509,7 @@ Features.fun = {
 --   Lobby          workspace.Players
 --   Game           workspace.InGamePlayers
 --   Roleplay Mode  found automatically (the folder that holds your character, or any workspace folder full of toon models)
--- Files live in TonyScriptPalace/CharacterCustomizer (Configs, Library, Cache). Anything in the old standalone
+-- Files live in TonyScriptPalace/CharacterCustomizer (Configs, Library, Cache, plus the Images and Textures folders you drop files into). Anything in the old standalone
 -- script's DandyCustomizer folder is copied over once, automatically.
 -- Everything lives inside one function so it only costs the hub ONE top-level local (Luau allows 200).
 ----------------------------------------------------------------------
@@ -7564,13 +7564,12 @@ do
 end
 
 local S = {
-    rules = {}, folders = { "Images", "Textures", "Animations" }, autoApply = false, autoConfig = "", keepWorking = true, localAnims = true,
+    rules = {}, autoApply = false, autoConfig = "", keepWorking = true, localAnims = true,
     sources = { Lobby = true, Game = true, Roleplay = true }, captureOthers = true,
 }
 do
     local s = jsonDecode(readFile(SETTINGS_F) or "")
     if type(s) == "table" then
-        if type(s.folders) == "table" then S.folders = s.folders end
         if s.autoApply ~= nil then S.autoApply = s.autoApply and true or false end
         if type(s.autoConfig) == "string" then S.autoConfig = s.autoConfig end
         if s.keepWorking ~= nil then S.keepWorking = s.keepWorking and true or false end
@@ -7586,16 +7585,11 @@ do
 end
 local function saveSettings() local j = jsonEncode(S); if j then writeFile(SETTINGS_F, j) end end
 
--- Folders are always INSIDE TonyScriptPalace/CharacterCustomizer (never the executor's workspace root).
-local function cleanFolder(f)
-    f = tostring(f or ""):gsub("\\", "/")
-    local pre = (ROOT_DIR .. "/"):lower()
-    if f:lower():sub(1, #pre) == pre then f = f:sub(#pre + 1) end
-    f = f:gsub("%.%.+", "")                 -- cannot climb out of the folder
-    f = f:gsub("^/+", "")
-    f = f:gsub("/+$", "")
-    return f
-end
+-- Two fixed folders inside TonyScriptPalace/CharacterCustomizer (no custom folders):
+--   Images    pictures for the 2D Character
+--   Textures  face textures and the voting icon
+-- Animation files (.rbxm) can sit in either one.
+local FOLDERS = { "Images", "Textures" }
 local function ensureDir(rel)               -- creates nested folders one segment at a time
     local cur = ROOT_DIR
     for seg in tostring(rel):gmatch("[^/]+") do
@@ -7603,15 +7597,7 @@ local function ensureDir(rel)               -- creates nested folders one segmen
         if not folderExists(cur) then pcall(makeDir, cur) end
     end
 end
-do
-    local seen, clean = {}, {}
-    for _, f in ipairs(S.folders) do
-        local c = cleanFolder(f)
-        if c ~= "" and not seen[c] then seen[c] = true; clean[#clean + 1] = c end
-    end
-    S.folders = clean
-    for _, f in ipairs(S.folders) do ensureDir(f) end
-end
+for _, f in ipairs(FOLDERS) do ensureDir(f) end
 
 
 -- Writing MeshId only changes the property: the geometry is NOT reloaded, so the old shape just gets stretched.
@@ -7625,7 +7611,7 @@ local function getMesh(id)   -- yields
     return nil, tostring(mp)
 end
 
--- Asset sources (rbxassetid / link / file in a folder YOU registered)
+-- Asset sources (rbxassetid / link / file in the Images or Textures folder)
 local EXTS, classifyAsset, resolveAsset, resolveAnim, fileOptions, walkFiles, findFile
 do
 EXTS = { "png", "jpg", "jpeg", "webp", "bmp", "tga", "obj", "mesh", "rbxm", "rbxmx", "mp3", "ogg", "wav" }
@@ -7732,7 +7718,7 @@ walkFiles = function(folder, depth, out)
 end
 local function registeredFiles()
     local out = {}
-    for _, folder in ipairs(S.folders) do          -- folders live inside TonyScriptPalace/CharacterCustomizer
+    for _, folder in ipairs(FOLDERS) do            -- folders live inside TonyScriptPalace/CharacterCustomizer
         local all = {}
         walkFiles(ROOT_DIR .. "/" .. folder, 0, all)
         for _, p in ipairs(all) do
@@ -7752,15 +7738,15 @@ end
 local IMG = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
 local MESHX = { obj = true, mesh = true }
 local ANIMX = { rbxm = true, rbxmx = true }
-fileOptions = function(kind)
+fileOptions = function(kind, folder)          -- folder (optional): only list files from "Images" or "Textures"
     local out = {}
+    local pre = folder and (folder:lower() .. "/")
     for _, f in ipairs(registeredFiles()) do
         local ok = (kind == "img" and IMG[f.ext]) or (kind == "mesh" and (MESHX[f.ext])) or (kind == "anim" and ANIMX[f.ext]) or (kind == "any")
-        if ok then out[#out + 1] = f.label end
+        if ok and (not pre or f.label:lower():sub(1, #pre) == pre) then out[#out + 1] = f.label end
     end
     if #out == 0 then
-        if #S.folders == 0 then return { "(no folders added yet: see Files & Library)" } end
-        return { "(no matching files in your folders)" }
+        return { "(no matching files in " .. (folder or "Images or Textures") .. ")" }
     end
     return out
 end
@@ -7769,7 +7755,7 @@ findFile = function(name)
     local pre = ROOT_DIR .. "/"
     if name:lower():sub(1, #pre:lower()) == pre:lower() then name = name:sub(#pre + 1) end
     if fileExists(ROOT_DIR .. "/" .. name) then return ROOT_DIR .. "/" .. name end             -- inside CharacterCustomizer (Images/face.png)
-    for _, folder in ipairs(S.folders) do
+    for _, folder in ipairs(FOLDERS) do
         local p = ROOT_DIR .. "/" .. folder .. "/" .. name                                -- just the file name (face.png)
         if fileExists(p) then return p end
     end
@@ -7790,7 +7776,7 @@ resolveAsset = function(src, cb)
     if not getasset then return cb(nil, "This executor has no getcustomasset.") end
     if kind == "file" then
         local p = findFile(v)
-        if not p then return cb(nil, "File not found: " .. v .. " (put it in a folder inside TonyScriptPalace/CharacterCustomizer)") end
+        if not p then return cb(nil, "File not found: " .. v .. " (put it in the Images or Textures folder inside TonyScriptPalace/CharacterCustomizer)") end
         local ok, res = pcall(getasset, p)
         if ok and res then return cb(res) end
         return cb(nil, "getcustomasset failed: " .. tostring(res))
@@ -8801,7 +8787,7 @@ do
     local DONE = ROOT_DIR .. "/migrated_folders.txt"
     if not fileExists(DONE) then
         local copied = 0
-        for _, f in ipairs(S.folders) do
+        for _, f in ipairs(FOLDERS) do
             if folderExists(f) then
                 local all = {}
                 walkFiles(f, 0, all)
@@ -9036,10 +9022,9 @@ end
 
 -- Customizer tab (sections built from the hub's own control types, so it follows whichever skin is active)
 local P = {
-    texSlot = "Normal", texSrc = "", animName = nil, animSrc = "", part = nil, cfgSel = "", cfgName = "", folderIn = "",
+    texSlot = "Normal", texSrc = "", texState = {}, animName = nil, animSrc = "", animState = {}, imgState = { Normal = {}, Blink = {}, Hurt = {} }, part = nil, cfgSel = "", cfgName = "",
     spin = false, zoom = 1, pv = nil, panMode = false,
 }
-local texBox, animBox
 local MODES = { "Lobby", "Game", "Roleplay" }
 local function texSlots()            -- every face slot this toon has (Normal, Blink, Hurt, Face, Transform...), plus the voting icon
     local out, seen = {}, {}
@@ -9080,7 +9065,7 @@ local function toonOpts(kind, filter)       -- labels, map
     end
     return labels, map
 end
-local function fileOpts(kind) return fileOptions(kind) end      -- entries starting with "(" are hints, not files
+local function fileOpts(kind, folder) return fileOptions(kind, folder) end      -- entries starting with "(" are hints, not files
 local function cfgList()
     local out = {}
     for _, p in ipairs(listDir(CFG_DIR)) do
@@ -9136,11 +9121,10 @@ local function scanMemory()
     end)
 end
 -- textures -------------------------------------------------------------
-local function texNow() return trim((texBox and texBox.Parent) and texBox.Text or P.texSrc) end
 local function texApply(src)
     if not need() then return end
     src = trim(src or "")
-    if src == "" then return toast("Type an id, link or file first.", "err") end
+    if src == "" then return toast("Pick a file or enter an ID or link first.", "err") end
     W.cfg.textures[P.texSlot] = src
     if P.texSlot == "Icon" then W.mine:applyIcon(src) else W.mine:applyTexture(P.texSlot, src) end
     toast(P.texSlot .. " replaced.", "ok"); tspRefresh()
@@ -9159,7 +9143,6 @@ local function animNames()
     table.sort(t)
     return t
 end
-local function animNow() return trim((animBox and animBox.Parent) and animBox.Text or P.animSrc) end
 
 -- parts ----------------------------------------------------------------
 local function partMap()
@@ -9195,6 +9178,41 @@ local function flat() if not W.cfg.flat then W.cfg.flat = flatDefaults() end; re
 ----------------------------------------------------------------------
 local function buildPage()
     local secs = {}
+
+    local CUSTOM_SRC = "Custom ID / Link..."
+    local function cat(...)                    -- joins control lists into one
+        local out = {}
+        for _, l in ipairs({ ... }) do for _, c in ipairs(l) do out[#out + 1] = c end end
+        return out
+    end
+    -- One "Source" dropdown: files from the Images / Textures folder, or "Custom ID / Link..." which shows a text box for an
+    -- rbxassetid, a Roblox link or any direct link. o = { text, kind, folder, none, empty, state, get, set }
+    local function srcRows(o)
+        local function cur() return trim(o.get() or "") end
+        local function isCustom() local v = cur(); return o.state.custom or (v ~= "" and (classifyAsset(v)) ~= "file") end
+        local rows = {
+            { t = "dropdown", text = o.text,
+                get = function() local v = cur(); return v ~= "" and short(v, 26) or (o.state.custom and CUSTOM_SRC or o.empty) end,
+                options = function()
+                    local l = fileOpts(o.kind, o.folder)
+                    if o.none then table.insert(l, 1, "(None)") end
+                    l[#l + 1] = CUSTOM_SRC
+                    return l
+                end,
+                set = function(x)
+                    if x == CUSTOM_SRC then o.state.custom = true
+                    elseif x == "(None)" then o.state.custom = false; o.set("")
+                    elseif x:sub(1, 1) == "(" then return
+                    else o.state.custom = false; o.set(x) end
+                    tspRefresh()
+                end },
+        }
+        if isCustom() then
+            rows[#rows + 1] = { t = "input", text = o.text .. " ID Or Link", placeholder = "rbxassetid / link",
+                get = cur, set = function(txt) o.set(trim(txt)) end }
+        end
+        return rows
+    end
 
     -- 0. PREVIEW (the viewport is only built while this section is expanded) ------
     secs[#secs + 1] = { title = "Preview", collapsed = true, controls = {
@@ -9242,15 +9260,13 @@ local function buildPage()
     secs[#secs + 1] = { title = "Model Sources", collapsed = true, controls = src }
 
     -- 4. TEXTURES -----------------------------------------------------
-    secs[#secs + 1] = { title = "Textures", collapsed = true, controls = {
-        { t = "text", text = "Change what your toon looks like. Face textures swap with blinking and getting hurt automatically."},
+    secs[#secs + 1] = { title = "Textures", collapsed = true, controls = cat({
+        { t = "text", text = "Change what your toon looks like. Face textures swap with blinking and getting hurt automatically. Pick a file from TonyScriptPalace/CharacterCustomizer/Textures, or choose Custom ID / Link for a Roblox asset id or a link."},
         { t = "dropdown", text = "Slot", get = function() return P.texSlot end, options = function() return texSlots() end,
             set = function(o) P.texSlot = o; tspRefresh() end },
         { t = "readout", text = "Current", get = function() local c = W.cfg.textures[P.texSlot]; return c and short(c, 26) or "game default" end },
-        { t = "input", text = "Source", placeholder = "rbxassetid / link / file",
-            get = function() return P.texSrc end, set = function(txt) P.texSrc = trim(txt) end, bind = function(tb) texBox = tb end },
-        { t = "dropdown", text = "Pick A File", get = function() return "Files..." end, options = function() return fileOpts("img") end,
-            set = function(o) if o:sub(1, 1) ~= "(" then P.texSrc = o; if texBox and texBox.Parent then texBox.Text = o end end end },
+    }, srcRows({ text = "Source", kind = "img", folder = "Textures", empty = "Pick a file...", state = P.texState,
+            get = function() return P.texSrc end, set = function(v) P.texSrc = v end }), {
         { t = "dropdown", text = "Texture Set From Toon", get = function() return "Toons..." end,
             options = function() local l = toonOpts("tex"); if #l == 0 then return { "(nothing captured yet)" } end; return l end,
             set = function(o)
@@ -9271,15 +9287,15 @@ local function buildPage()
                 if found and need() then W.cfg.textures.Icon = found; W.mine:applyIcon(found); toast("Voting icon replaced.", "ok"); tspRefresh() end
             end },
         { t = "buttons", items = {
-            { label = "Apply", style = "green", fn = function() texApply(texNow()) end },
+            { label = "Apply", style = "green", fn = function() texApply(P.texSrc) end },
             { label = "Restore Slot", fn = function() W.cfg.textures[P.texSlot] = nil; reapply(); toast(P.texSlot .. " restored.", "ok") end },
             { label = "Restore All", style = "red", confirm = true, fn = function() W.cfg.textures = {}; reapply(); toast("All textures restored.", "ok") end },
         } },
-    } }
+    }) }
 
     -- 5. ANIMATIONS ---------------------------------------------------
-    secs[#secs + 1] = { title = "Animations", collapsed = true, controls = {
-        { t = "text", text = "Swap animations one at a time, or grab a whole pack from another toon. Files: .rbxm with a KeyframeSequence (experimental, so don't expect miracles)."},
+    secs[#secs + 1] = { title = "Animations", collapsed = true, controls = cat({
+        { t = "text", text = "Swap animations one at a time, or grab a whole pack from another toon. Source: an animation id, a link, or a .rbxm with a KeyframeSequence from the Images or Textures folder (experimental, so don't expect miracles)."},
         { t = "toggle", text = "Keep Animations Local", get = function() return S.localAnims end,
             set = function(v) S.localAnims = v; saveSettings(); reapply(); toast(v and "Animations are now local: only you see them." or "Animations are now replicated: everyone sees them.", "info") end },
         { t = "text", text = "On: only you see your custom animations and everyone else keeps seeing your normal ones. Off: the game plays them for everyone, which can look broken to others if the rig doesn't match (hello, T-pose)."},
@@ -9292,10 +9308,8 @@ local function buildPage()
             local c = W.cfg.animations[n]
             return c and short(c, 26) or "game default"
         end },
-        { t = "input", text = "Source", placeholder = "rbxassetid / .rbxm file",
-            get = function() return P.animSrc end, set = function(txt) P.animSrc = trim(txt) end, bind = function(tb) animBox = tb end },
-        { t = "dropdown", text = "Pick A File", get = function() return "Files..." end, options = function() return fileOpts("anim") end,
-            set = function(o) if o:sub(1, 1) ~= "(" then P.animSrc = o; if animBox and animBox.Parent then animBox.Text = o end end end },
+    }, srcRows({ text = "Source", kind = "anim", empty = "Pick a file...", state = P.animState,
+            get = function() return P.animSrc end, set = function(v) P.animSrc = v end }), {
         { t = "dropdown", text = "This Animation From Toon", get = function() return "Toons..." end,
             options = function()
                 local out = {}
@@ -9312,9 +9326,9 @@ local function buildPage()
             end },
         { t = "buttons", items = {
             { label = "Apply", style = "green", fn = function()
-                local n, s = P.animName, animNow()
+                local n, s = P.animName, P.animSrc
                 if not n then return toast("Pick an animation first.", "err") end
-                if s == "" then return toast("Type an id or file first.", "err") end
+                if s == "" then return toast("Pick a file or enter an ID or link first.", "err") end
                 if not need() then return end
                 W.cfg.animations[n] = s; W.mine:applyAnim(n, s); toast(n .. " replaced.", "ok"); tspRefresh()
             end },
@@ -9334,7 +9348,7 @@ local function buildPage()
         { t = "buttons", items = {
             { label = "Restore All Animations", style = "red", confirm = true, fn = function() W.cfg.animations = {}; reapply(); toast("All animations restored.", "ok") end },
         } },
-    } }
+    }) }
 
     -- 6. PARTS --------------------------------------------------------
     do
@@ -9375,12 +9389,15 @@ local function buildPage()
     do
         local f = W.cfg.flat or flatDefaults()
         local function imgRow(st)
-            return { t = "input", text = st .. " Image", placeholder = "rbxassetid / link / file",
-                get = function() return (W.cfg.flat and W.cfg.flat.images and W.cfg.flat.images[st]) or "" end,
-                set = function(txt) local fl = flat(); fl.images = fl.images or {}; fl.images[st] = trim(txt); if fl.enabled then reapply() end end }
+            return srcRows({ text = st .. " Image", kind = "img", folder = "Images", none = true, empty = "(None)", state = P.imgState[st],
+                get = function() return W.cfg.flat and W.cfg.flat.images and W.cfg.flat.images[st] or "" end,
+                set = function(v)
+                    local fl = flat(); fl.images = fl.images or {}; fl.images[st] = v
+                    if fl.enabled then reapply() end
+                end })
         end
-        secs[#secs + 1] = { title = "2D Character", collapsed = true, controls = {
-            { t = "text", text = "Draw your toon yourself: your images replace the 3D body. Blink and Hurt images show up automatically."},
+        secs[#secs + 1] = { title = "2D Character", collapsed = true, controls = cat({
+            { t = "text", text = "Draw your toon yourself: your images replace the 3D body. Blink and Hurt images show up automatically. Pick images from TonyScriptPalace/CharacterCustomizer/Images, or choose Custom ID / Link for an asset id or a link."},
             { t = "toggle", text = "2D Character", get = function() return W.cfg.flat and W.cfg.flat.enabled or false end,
                 set = function(v) flat().enabled = v; reapply() end },
             { t = "dropdown", text = "Mode", get = function() return f.mode end, options = function() return { "Decal", "SurfaceGui", "BillboardGui", "Beam" } end,
@@ -9389,12 +9406,12 @@ local function buildPage()
                 options = function() return { "Camera (yaw only)", "Camera (full)", "Fixed" } end,
                 set = function(o) flat().facing = FACING_REV[o] or "yaw"; reapply(); tspRefresh() end },
             { t = "toggle", text = "Hide Body", get = function() return f.hideBody ~= false end, set = function(v) flat().hideBody = v; reapply() end },
-            imgRow("Normal"), imgRow("Blink"), imgRow("Hurt"),
+        }, imgRow("Normal"), imgRow("Blink"), imgRow("Hurt"), {
             { t = "slider", text = "Width", min = 0.5, max = 20, dec = 2, get = function() return tonumber(f.width) or 4 end, set = function(v) flat().width = v end },
             { t = "slider", text = "Height", min = 0.5, max = 20, dec = 2, get = function() return tonumber(f.height) or 4 end, set = function(v) flat().height = v end },
             { t = "toggle", text = "Feet On Ground", get = function() return f.groundAlign ~= false end, set = function(v) flat().groundAlign = v end },
             { t = "toggle", text = "Pixelated", get = function() return f.pixelated ~= false end, set = function(v) flat().pixelated = v end },
-        } }
+        }) }
     end
 
     -- 8. CONFIGS ------------------------------------------------------
@@ -9463,28 +9480,8 @@ local function buildPage()
 
     -- 9. FILES & LIBRARY ---------------------------------------------
     local fl = {
-        { t = "text", text = "These folders live inside TonyScriptPalace/CharacterCustomizer in your executor's workspace (Images, Textures and Animations are made for you). Drop files in and they show up in every Pick A File menu. Images: png, jpg, webp. Animations: rbxm."},
-        { t = "input", text = "Add Folder", placeholder = "name, like Images/Faces, then Enter", get = function() return P.folderIn end,
-            set = function(txt, enter)
-                P.folderIn = trim(txt)
-                if enter and P.folderIn ~= "" then
-                    local f = cleanFolder(P.folderIn)           -- always relative to CharacterCustomizer
-                    if f == "" then return toast("Type a folder name, like Images/Faces.", "err") end
-                    if not table.find(S.folders, f) then
-                        ensureDir(f)
-                        S.folders[#S.folders + 1] = f; saveSettings()
-                        toast("Added folder '" .. f .. "' inside CharacterCustomizer.", "ok")
-                    end
-                    P.folderIn = ""; tspRefresh()
-                end
-            end },
-        { t = "text", text = #S.folders == 0 and "No folders added yet." or ("Your folders (inside CharacterCustomizer): " .. table.concat(S.folders, ",  "))},
+        { t = "text", text = "Two folders live inside TonyScriptPalace/CharacterCustomizer in your executor's workspace, and both are made for you. Images holds pictures for the 2D Character (png, jpg, webp). Textures holds face textures and voting icons. Animation files (rbxm) can go in either one. Drop files in and they show up in the Source menus. For a Roblox asset id or a link, pick Custom ID / Link in a Source menu."},
     }
-    if #S.folders > 0 then
-        fl[#fl + 1] = { t = "dropdown", text = "Remove Folder", get = function() return "Pick a folder..." end,
-            options = function() return S.folders end,
-            set = function(o) local i = table.find(S.folders, o); if i then table.remove(S.folders, i); saveSettings(); tspRefresh() end end }
-    end
     fl[#fl + 1] = { t = "text", text = "Scan Game Memory digs up toon models the game keeps hidden in memory and saves them to your library (experimental, can take a few seconds)."}
     fl[#fl + 1] = { t = "buttons", items = { { label = "Scan Game Memory For Toons", fn = scanMemory } } }
     fl[#fl + 1] = { t = "dropdown", text = "Remove Toon From Library", get = function() return "Pick a toon..." end,
