@@ -615,9 +615,11 @@ do
         end
 
         if cats.Items.Enabled and cats.Items.Shop then
-            -- the shop is part of the elevator, not of a room: Workspace.Elevators.<elevator>.Otherside.Shop. The item for sale is the model inside
-            -- each of its Slot1 / Slot2 / Slot3 MeshParts, and it carries its price in a NumberValue named Cost. Your tapes are the SurvivalPoints
-            -- NumberValue in Workspace.Info.PlayerStats.<your name>. Hidden items stay hidden here too.
+            -- Two places hold shop slots, and both are checked:
+            --   Workspace.Elevators.<elevator>.DandyStore                 (Slot1 / Slot2 / Slot3, plus HolidayItemSlot when there is one)
+            --   Workspace.Elevators.<elevator>.Otherside.Shop             (Slot1 / Slot2 / Slot3, the older layout)
+            -- The item for sale is the model inside each slot, and it carries its price in a NumberValue named Cost. Your tapes are the
+            -- SurvivalPoints NumberValue in Workspace.Info.PlayerStats.<your name>. Hidden items stay hidden here too.
             local it = cats.Items
             local mode = it.ShopMode
             local tapes
@@ -628,40 +630,44 @@ do
                 local sv = me and me:FindFirstChild("SurvivalPoints")
                 tapes = sv and sv:IsA("ValueBase") and tonumber(sv.Value) or nil
             end
-            local els = Workspace:FindFirstChild("Elevators")
-            if els then
-                for _, e in ipairs(els:GetChildren()) do
-                    local side = e:FindFirstChild("Otherside")
-                    local shop = side and side:FindFirstChild("Shop")
-                    if shop then
-                        for _, slot in ipairs(shop:GetChildren()) do
-                            if slot.Name:find("^Slot%d") then
-                                for _, i in ipairs(slot:GetChildren()) do
-                                    if (i:IsA("Model") or i:IsA("BasePart")) and not it.Hidden[i.Name] then
-                                        local normal
-                                        if it.PerItem then normal = it.Colors[i.Name] or it.Fallback else normal = it.Color end
-                                        local col = normal
-                                        if mode == "Custom" then
-                                            col = it.ShopColor
-                                        elseif mode == "Tapes" then
-                                            local cv = i:FindFirstChild("Cost")
-                                            local cost = cv and cv:IsA("ValueBase") and tonumber(cv.Value) or nil
-                                            if tapes and cost then                -- if either is unreadable the item just keeps its normal color
-                                                if tapes >= cost then
-                                                    col = it.ShopAffordNormal and normal or it.ShopAffordColor
-                                                elseif it.ShopAffordOnly then
-                                                    col = nil
-                                                else
-                                                    col = it.ShopNoAffordColor
-                                                end
-                                            end
-                                        end
-                                        add(i, col, "Items")
-                                    end
+            local function shopSlot(slot)
+                for _, i in ipairs(slot:GetChildren()) do
+                    if (i:IsA("Model") or i:IsA("BasePart")) and not it.Hidden[i.Name] then
+                        local normal
+                        if it.PerItem then normal = it.Colors[i.Name] or it.Fallback else normal = it.Color end
+                        local col = normal
+                        if mode == "Custom" then
+                            col = it.ShopColor
+                        elseif mode == "Tapes" then
+                            local cv = i:FindFirstChild("Cost") or slot:FindFirstChild("Cost")
+                            local cost = cv and cv:IsA("ValueBase") and tonumber(cv.Value) or tonumber(i:GetAttribute("Cost")) or nil
+                            if tapes and cost then                -- if either is unreadable the item just keeps its normal color
+                                if tapes >= cost then
+                                    col = it.ShopAffordNormal and normal or it.ShopAffordColor
+                                elseif it.ShopAffordOnly then
+                                    col = nil
+                                else
+                                    col = it.ShopNoAffordColor
                                 end
                             end
                         end
+                        add(i, col, "Items")
                     end
+                end
+            end
+            local function shopSide(container)
+                for _, slot in ipairs(container:GetChildren()) do
+                    if slot.Name:find("^Slot%d") or slot.Name == "HolidayItemSlot" then shopSlot(slot) end
+                end
+            end
+            local els = Workspace:FindFirstChild("Elevators")
+            if els then
+                for _, e in ipairs(els:GetChildren()) do
+                    local store = e:FindFirstChild("DandyStore")
+                    if store then shopSide(store) end
+                    local side = e:FindFirstChild("Otherside")
+                    local shop = side and side:FindFirstChild("Shop")
+                    if shop then shopSide(shop) end
                 end
             end
         end
@@ -3575,6 +3581,9 @@ local D = {
     Music = false, MusicSrc = "", MusicVol = 1, MusicRange = 120, Music3D = true,
     SpawnSound = false, SpawnSrc = "", SpawnVol = 1,
     DeathSound = false, DeathSrc = "", DeathVol = 1,
+    DashWarnSound = false, DashWarnSrc = "", DashWarnVol = 1, DashWarnCut = true,       -- plays while it shakes before a dash
+    DashStartSound = false, DashStartSrc = "", DashStartVol = 1,                          -- plays once the moment the dash starts
+    DashLoopSound = false, DashLoopSrc = "", DashLoopVol = 1,                             -- loops for as long as it is dashing
     After = false, AfterRate = 0.07, AfterFade = 0.45, AfterStart = 0.5, AfterDashOnly = false,
 }
 P.Defaults = D
@@ -3591,10 +3600,11 @@ local RANGES = {
     DashSpeed = { 10, 300 }, DashDistance = { 5, 300 }, DashWindup = { 0, 5 }, DashCdMin = { 0.5, 120 }, DashCdMax = { 0.5, 180 }, DashRange = { 5, 500 },
     FlashTime = { 0, 15 }, FlashRate = { 1, 20 }, Timer = { 5, 1800 },
     MusicVol = { 0, 2 }, MusicRange = { 10, 1000 }, SpawnVol = { 0, 2 }, DeathVol = { 0, 2 },
+    DashWarnVol = { 0, 2 }, DashStartVol = { 0, 2 }, DashLoopVol = { 0, 2 },
     AfterRate = { 0.02, 0.5 }, AfterFade = { 0.1, 2 }, AfterStart = { 0.05, 1 },
 }
 P.RANGES = RANGES
-local TEXTKEYS = { "ImageSrc", "FrameList", "MusicSrc", "SpawnSrc", "DeathSrc" }
+local TEXTKEYS = { "ImageSrc", "FrameList", "MusicSrc", "SpawnSrc", "DeathSrc", "DashWarnSrc", "DashStartSrc", "DashLoopSrc" }
 
 function P.sanitize()
     for k, r in pairs(RANGES) do
@@ -3942,6 +3952,67 @@ end
 local function stopMusic()
     if E.music then pcall(function() E.music.sound:Destroy() end); E.music = nil end
 end
+
+-- Dash sounds: "warn" (while it shakes), "start" (once, when the lunge begins) and "loop" (for as long as it is dashing).
+-- Each one has a token, so a sound that is still being fetched when it is no longer wanted is thrown away instead of played late.
+E.dSnd, E.dTok, E.dPend, E.dErr, E.dashPrev = {}, {}, {}, {}, "idle"
+local function stopDashSound(slot)
+    E.dTok[slot] = (E.dTok[slot] or 0) + 1
+    E.dPend[slot] = nil
+    local s = E.dSnd[slot]
+    if s then pcall(function() s:Destroy() end); E.dSnd[slot] = nil end
+end
+local function stopDashSounds()
+    for _, k in ipairs({ "warn", "start", "loop" }) do stopDashSound(k) end
+    E.dashPrev = "idle"
+end
+local function playDashSound(slot, src, vol, looped)
+    if trim(src) == "" then return end
+    stopDashSound(slot)
+    local tok = E.dTok[slot]
+    E.dPend[slot] = true
+    resolve("snd", src, function(a, err)
+        if tok ~= E.dTok[slot] then return end
+        E.dPend[slot] = nil
+        if not alive or not E.folder or not E.folder.Parent then return end
+        if not a then
+            if not E.dErr[slot] then E.dErr[slot] = true; P.say("Pursuer dash sound (" .. slot .. "): " .. tostring(err), "err") end
+            return
+        end
+        local s = Instance.new("Sound")
+        s.SoundId = a; s.Volume = vol; s.Looped = looped == true; s.Parent = E.folder
+        E.dSnd[slot] = s
+        if not looped then
+            s.Ended:Connect(function() if E.dSnd[slot] == s then E.dSnd[slot] = nil end; s:Destroy() end)
+        end
+        s:Play()
+    end)
+end
+-- runs every frame: starts and stops the three dash sounds to match what the dash is doing
+local function syncDashSounds()
+    local chasing = E.phase == "chase" and Cfg.Dash
+    local st = chasing and E.dash or "idle"
+    local prev = E.dashPrev
+    if st ~= prev then
+        E.dashPrev = st
+        if st == "windup" and Cfg.DashWarnSound then
+            playDashSound("warn", Cfg.DashWarnSrc, Cfg.DashWarnVol, false)
+        end
+        if prev == "windup" and Cfg.DashWarnCut then stopDashSound("warn") end
+        if st == "dashing" and Cfg.DashStartSound then
+            playDashSound("start", Cfg.DashStartSrc, Cfg.DashStartVol, false)
+        end
+    end
+    -- the loop follows the dash itself, so it also goes quiet while it is paused (you are extracting) and when it dies or fades
+    local wantLoop = st == "dashing" and E.speedNow > 0.01 and Cfg.DashLoopSound and trim(Cfg.DashLoopSrc) ~= ""
+    if wantLoop then
+        if not E.dSnd.loop and not E.dPend.loop then playDashSound("loop", Cfg.DashLoopSrc, Cfg.DashLoopVol, true) end
+        local l = E.dSnd.loop
+        if l and l.Parent then l.Volume = Cfg.DashLoopVol * E.alpha end
+    elseif E.dSnd.loop or E.dPend.loop then
+        stopDashSound("loop")
+    end
+end
 local function updateMusic()
     local want = Cfg.Music and trim(Cfg.MusicSrc) ~= "" and E.body ~= nil and (E.phase == "flash" or E.phase == "chase" or E.phase == "fading")
     if not want then if E.music then stopMusic() end; return end
@@ -3992,6 +4063,7 @@ local function makeBody()
 end
 local function killBody()
     stopMusic()
+    stopDashSounds()
     if E.body then pcall(function() E.body.part:Destroy() end); E.body = nil end
 end
 
@@ -4535,6 +4607,7 @@ local function step(dt)
     setCounted(Cfg.EyeIcon and E.phase == "chase")
     updateBody(t)
     updateMusic()
+    syncDashSounds()
 
     -- timer HUD
     local showHud = Cfg.Trigger == "After A Timer" and Cfg.TimerHud and active and not inElev and not dead
@@ -5856,7 +5929,7 @@ UI.hints = {
     ["While A Twisted Is Chasing Me"] = "True for as long as a Twisted (not Dessa) is chasing you and hasn't lost interest.",
     ["Ctrllock"] = "Shift lock on Left Ctrl instead of Shift (Shift is sprint). Press Left Ctrl to lock and unlock the camera.",
     ["Enable Blotspeak"] = "Everything you type in chat is sent backwards. Commands that start with / are left alone.",
-    ["Include Shop Items"] = "Also highlight the items for sale in the elevator shop (the models in Slot1, Slot2 and Slot3).",
+    ["Include Shop Items"] = "Also highlight the items for sale in the elevator shop (the models in the Slot1, Slot2 and Slot3 of both DandyStore and Shop, plus the holiday slot).",
     ["Shop Item Colors"] = "Like Normal Items, one color for all shop items, or by whether you have enough Tapes for each one.",
     ["Normal Item Colors When I Have Enough"] = "Items you can afford get their normal item color instead of the Enough Tapes color.",
     ["Only Highlight When I Have Enough"] = "Shop items you can't afford aren't highlighted at all.",
@@ -5938,6 +6011,10 @@ UI.hints = {
     ["Dash (Dark Esau Style)"] = "Now and then it lunges at you. Dark Esau energy.",
     ["Afterimages"] = "Fading copies trail behind it. Purely for drama.",
     ["It Plays Music"] = "Plays its own music while it chases you.",
+    ["Sound During The Dash Warning Shake"] = "Plays a sound while the Pursuer stops and shakes before a dash.",
+    ["Cut It Off When The Dash Starts"] = "Stops the warning sound the moment the lunge begins. Off lets it play to the end.",
+    ["Sound When The Dash Starts"] = "Plays once at the instant the Pursuer lunges.",
+    ["Looping Sound While It Dashes"] = "Repeats a sound for as long as the Pursuer is dashing, then stops.",
     ["Eye Icon And Chase Counter While It Chases"] = "Shows the game's eye icon, like a real Twisted spotted you.",
     ["Speed While You Extract"] = "Slow it down, or set an exact speed, while you decode. Replaces the pause.",
     ["Speed In Panic Mode"] = "Boost it in panic mode by a percentage, a flat amount, or set one exact speed.",
@@ -7229,6 +7306,26 @@ function Fun.Pur.sections()
         snd[#snd + 1] = pick("snd", "DeathSrc", "Pick A File")
         snd[#snd + 1] = sl("DeathVol", "Death Sound Volume", 0, 2, 2, 0.05)
     end
+    snd[#snd + 1] = tgR("DashWarnSound", "Sound During The Dash Warning Shake")
+    if PC.DashWarnSound then
+        snd[#snd + 1] = inp("DashWarnSrc", "Warning Shake Sound", "warning.mp3 or https://... or 123456")
+        snd[#snd + 1] = pick("snd", "DashWarnSrc", "Pick A File")
+        snd[#snd + 1] = sl("DashWarnVol", "Warning Shake Sound Volume", 0, 2, 2, 0.05)
+        snd[#snd + 1] = tg("DashWarnCut", "Cut It Off When The Dash Starts")
+    end
+    snd[#snd + 1] = tgR("DashStartSound", "Sound When The Dash Starts")
+    if PC.DashStartSound then
+        snd[#snd + 1] = inp("DashStartSrc", "Dash Start Sound", "lunge.mp3 or https://... or 123456")
+        snd[#snd + 1] = pick("snd", "DashStartSrc", "Pick A File")
+        snd[#snd + 1] = sl("DashStartVol", "Dash Start Sound Volume", 0, 2, 2, 0.05)
+    end
+    snd[#snd + 1] = tgR("DashLoopSound", "Looping Sound While It Dashes")
+    if PC.DashLoopSound then
+        snd[#snd + 1] = inp("DashLoopSrc", "Dash Loop Sound", "whoosh.mp3 or https://... or 123456")
+        snd[#snd + 1] = pick("snd", "DashLoopSrc", "Pick A File")
+        snd[#snd + 1] = sl("DashLoopVol", "Dash Loop Sound Volume", 0, 2, 2, 0.05)
+    end
+    snd[#snd + 1] = { t = "text", text = "The three dash sounds only play when Dash is turned on in the Dash section. The warning sound starts when it stops to shake, the start sound plays once when it lunges, and the loop repeats until the dash ends (it also stops if it pauses while you extract, or when it gets you). The first time a link or asset number is used it has to download, so a very short warning shake can pass before the sound begins; files in the Sounds folder start right away."}
     snd[#snd + 1] = { t = "text", text = "Sounds can be files in TonyScriptPalace/Pursuer/Sounds, direct links (mp3, ogg or wav; Google Drive, Dropbox and GitHub links get converted for you) or Roblox asset numbers. The music stops when it kills you."}
 
     -- 7. afterimages --------------------------------------------------
