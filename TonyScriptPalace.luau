@@ -2378,7 +2378,7 @@ end
 --#endregion movement-engine
 --#region automation-engine
 ----------------------------------------------------------------------
--- AUTOMATION ENGINE  (auto skill checks + instant calibration success + Swimmy Barnaby bot)
+-- AUTOMATION ENGINE  (auto skill checks + instant calibration success + Swimmy Barnaby bot + Brusha's Inspire)
 -- All skill checks listen to one InputAction ("SkillCheckTap"); firing its Pressed
 -- signal is the same as pressing the key (no window focus, no latency).
 ----------------------------------------------------------------------
@@ -2398,6 +2398,7 @@ local Auto = {
     SwimmyRapidRate = 4,
     ChaseQuit = false,      -- Chase Safety: leave the machine the moment a Twisted is chasing you (even mid skill check)
     Ability = { On = false, Custom = false, All = false, Spotted = false, Chasing = false, Status = "Off" },   -- Auto Ability. Custom = only when the chosen conditions are met (All = every one of them, otherwise any one)
+    Inspire = { Auto = false, Instant = false, Speed = 3, Delay = 0 },   -- Brusha's paint minigame. Auto = swipe for you, Instant = skip it. Speed is in screen widths per second, Delay in seconds
     Status = "Idle",
 }
 do
@@ -2835,6 +2836,115 @@ do
         A.Status = "Used your ability"
     end
 
+    -- ---------------------------------------------------------- INSPIRE (Brusha)
+    -- Brusha's ability opens a paint minigame on the machine. The server sends "BrushaMinigameStart", the client runs BrushaAbility's Minigame1 (sweep
+    -- the mouse back and forth over the canvas until the meter is full) and posts "BrushaMinigameResult" back, which is all the server waits for.
+    --  * Instant Inspire answers the start message with a finished result, so the minigame never opens.
+    --  * Auto Inspire lets the game run its own minigame (UI, brush, strokes) but feeds it a swipe instead of your mouse. For that one call per frame
+    --    the mouse position is swapped for the swipe, so the brush follows it too; nothing else ever sees the fake position.
+    -- Nothing but Brusha's ability sends that message, so both switches do nothing on any other character.
+    local insp = {}
+    local function inspActions()       -- Network keeps its handlers in a private table, which is an upvalue of AddAction
+        if insp.tbl then return insp.tbl, insp.net end
+        local N = try(require, ReplicatedStorage.SharedUtils.Network)
+        local ups = N and N.AddAction and debug and debug.getupvalues and try(debug.getupvalues, N.AddAction)
+        for _, up in pairs(ups or {}) do
+            if type(up) == "table" and type(rawget(up, "BrushaMinigameStart")) == "function" then
+                insp.tbl, insp.net = up, N
+                return up, N
+            end
+        end
+    end
+    local function mouseHook()         -- one hook for the life of the game session (a reload reuses it), a pass-through unless a swipe is running
+        local H = env.TSPMouseHook
+        if H then return H end
+        if not (hookfunction and newcclosure) then return nil end
+        H = {}
+        local old
+        local ok = pcall(function()
+            old = hookfunction(UIS.GetMouseLocation, newcclosure(function(self, ...)
+                local f = H.fake
+                if f then return f end
+                return old(self, ...)
+            end))
+        end)
+        if ok and old then env.TSPMouseHook = H; return H end
+        return nil
+    end
+    local function paintFor(shell)     -- called once per minigame, right after the game has built it
+        local H = mouseHook()
+        local base = shell.update
+        local phase, wob = 0, 0
+        Auto.Status = "Auto Inspire: painting"
+        shell.update = function(self, dt)
+            local I = Auto.Inspire
+            if not I.Auto then return base(self, dt) end             -- switched off mid-swipe: your mouse takes over again
+            dt = dt or 0
+            local canvas, layer, cam = self.canvas, self.splotchLayer, Workspace.CurrentCamera
+            if not (canvas and layer and cam and canvas.AbsoluteSize.X > 0 and layer.AbsoluteSize.X > 0) then return base(self, dt) end
+            -- sweep left and right across the canvas (a triangle wave) with a little up and down wobble, then turn that point into the
+            -- "alpha" (fraction of the screen) the game reads from the mouse. The game only counts movement inside the canvas.
+            local cs, cp, ls, lp = canvas.AbsoluteSize, canvas.AbsolutePosition, layer.AbsoluteSize, layer.AbsolutePosition
+            phase = (phase + dt * I.Speed / math.max(0.7 * cs.X / ls.X, 0.05)) % 2
+            wob = wob + dt * 5
+            local u = phase < 1 and phase or 2 - phase
+            local alpha = Vector2.new((cp.X + cs.X * (0.15 + 0.7 * u) - lp.X) / ls.X, (cp.Y + cs.Y * (0.5 + 0.12 * math.sin(wob)) - lp.Y) / ls.Y)
+            if H then H.fake = Vector2.new(alpha.X * cam.ViewportSize.X, alpha.Y * cam.ViewportSize.Y) end
+            local ok, _, speed = pcall(base, self, dt)
+            if H then H.fake = nil end
+            return alpha, ok and speed or 0
+        end
+    end
+    local function maintainInspire()
+        local I = Auto.Inspire
+        if not (I.Instant or I.Auto or insp.startWrap or insp.paintWrap) then return end
+        -- Instant Inspire: answer the start message ourselves
+        local tbl, net = inspActions()
+        if tbl then
+            local cur = tbl.BrushaMinigameStart
+            if I.Instant then
+                if cur ~= insp.startWrap then
+                    local orig = cur
+                    insp.startOrig = orig
+                    insp.startWrap = function(id, dur)
+                        local o = Auto.Inspire
+                        if not o.Instant then return orig(id, dur) end
+                        Auto.Status = "Instant Inspire (session " .. tostring(id) .. ")"
+                        local function send() pcall(net.Post, net, "BrushaMinigameResult", id, true) end
+                        if o.Delay > 0 then task.delay(o.Delay, send) else send() end
+                    end
+                    tbl.BrushaMinigameStart = insp.startWrap
+                end
+            elseif insp.startWrap and cur == insp.startWrap then
+                tbl.BrushaMinigameStart = insp.startOrig
+                insp.startWrap = nil
+            end
+        end
+        -- Auto Inspire: take over the swipe once the game has built its minigame
+        if not insp.M1 and (I.Auto or insp.paintWrap) then
+            insp.M1 = try(function() return require(ReplicatedStorage.Modules.Gameplay.BrushaAbility.Minigames.Minigame1) end)
+        end
+        local M1 = insp.M1
+        if M1 then
+            local cur = M1.start
+            if I.Auto then
+                if cur ~= insp.paintWrap then
+                    local orig = cur
+                    insp.paintOrig = orig
+                    insp.paintWrap = function(sess)
+                        orig(sess)
+                        local shell = Auto.Inspire.Auto and sess and sess.state and sess.state.shell
+                        if shell then pcall(paintFor, shell) end
+                    end
+                    M1.start = insp.paintWrap
+                end
+            elseif insp.paintWrap and cur == insp.paintWrap then
+                M1.start = insp.paintOrig
+                insp.paintWrap = nil
+            end
+        end
+    end
+
     -- ---------------------------------------------------------- MAIN LOOP
     local tmr = 0
     connect(RunService.RenderStepped, function(dt)
@@ -2843,7 +2953,7 @@ do
         if Auto.ChaseQuit then pcall(chaseQuit) end
         if Auto.Ability.On then pcall(autoAbility) end
         tmr = tmr + dt
-        if tmr > 0.3 then tmr = 0; pcall(maintainWrap) end
+        if tmr > 0.3 then tmr = 0; pcall(maintainWrap); pcall(maintainInspire) end
         if Auto.Default then pcall(stepDefault) else dflt.last = nil end
         if Auto.Circle then pcall(stepCircle) else circ.last = nil end
         if Auto.Treadmill then pcall(stepTread, dt) end
@@ -2854,7 +2964,9 @@ do
 
     function Auto.Unload()
         Auto.Instant = false
+        Auto.Inspire.Auto, Auto.Inspire.Instant = false, false
         pcall(maintainWrap)
+        pcall(maintainInspire)
         unhookSwim()
     end
 end
@@ -5806,6 +5918,10 @@ UI.hints = {
     ["Continuous Coins Per Second"] = "Lower this if your progress stops going up.",
     ["Auto Run On Treadmill Machines"] = "Holds sprint for you while you work a treadmill.",
     ["Instant Calibration Success"] = "Skips the minigame with a perfect hit. Not subtle, but effective.",
+    ["Auto Inspire"] = "Brusha only. Swipes the paint minigame for you when you use your ability on a machine. The minigame still plays out on screen.",
+    ["Instant Inspire"] = "Brusha only. Skips the paint minigame completely and the machine is inspired the moment you use your ability. Wins over Auto Inspire.",
+    ["Auto Inspire Swipe Speed"] = "How fast the automatic swipe moves. Higher fills the meter sooner. The game stops counting extra speed around 6.",
+    ["Instant Inspire Delay (Seconds)"] = "How long it waits before finishing the minigame. A little delay looks less robotic.",
     ["Affect Default Machines"] = "Instant Calibration Success answers default (bar and marker) machines.",
     ["Affect Circle Machines"] = "Instant Calibration Success answers circle machines.",
     ["Affect Treadmill Machines"] = "Instant Calibration Success answers treadmill machines.",
@@ -6760,8 +6876,7 @@ local function buildAutomationPage()
         return { t = "toggle", text = text, get = function() return Auto[key] end,
             set = function(v) Auto[key] = v; Auto.Status = v and (text .. " on") or (text .. " off"); if extra then extra(v) end end }
     end
-    return {
-        { title = "Auto Skill Checks", controls = {
+    local skillChecks = {
             { t = "text", text = "Each toggle taps the skill check for you at the right moment. It reads the green or yellow zone live off the screen, so tiny skill check sizes aren't a problem. Turn them on before you start a machine."},
             tog("Default Machines", "Default"),
             tog("Circle Machines", "Circle"),
@@ -6771,8 +6886,8 @@ local function buildAutomationPage()
             { t = "text", text = "Snap To Green/Yellow moves the marker (the green area on default machines) or the ring (the yellow zone on circle machines) to the exact middle of the zone right before tapping. Turn it off and it only hits when the marker really lands there. At low FPS it can miss tiny zones, so your call."},
             { t = "slider", text = "Treadmill Taps Per Second", min = 0, max = 20, dec = 0, step = 1,
                 get = function() return Auto.TapRate end, set = function(v) Auto.TapRate = v end },
-        } },
-        { title = "Swimmy Barnaby", controls = {
+    }
+    local swimmy = {
             { t = "text", text = "With Swimmy Barnaby Machines on, Barnaby flies dead level and can't hit the seaweed. Coins count as this machine's gold skill checks."},
             { t = "toggle", text = "Hide Seaweed", get = function() return Auto.SwimmyHide end, set = function(v) Auto.SwimmyHide = v end },
             { t = "toggle", text = "Hide Coins", get = function() return Auto.SwimmyHideCoins end, set = function(v) Auto.SwimmyHideCoins = v end },
@@ -6783,9 +6898,9 @@ local function buildAutomationPage()
             { t = "slider", text = "Continuous Coins Per Second", min = 1, max = 30, dec = 0, step = 1,
                 get = function() return Auto.SwimmyRapidRate end, set = function(v) Auto.SwimmyRapidRate = v end },
             { t = "text", text = "Pull Coins brings each coin to Barnaby as it gets close. Instant Coins grabs each one the second it spawns. Coin For Every Seaweed gives you a coin for every seaweed gap Barnaby passes, even if no coin spawned there. Continuous Coins keeps collecting non-stop at the rate below. The server may ignore coins that come in too fast, so if your progress stops going up, lower the rate. Obstacles are hidden before the game shows them, so nothing flashes on screen."},
-        } },
-        { title = "Auto Run (Treadmill Machines)", controls = autoRunControls() },
-        { title = "Instant Calibration Success", controls = {
+    }
+    local autoRun = autoRunControls()
+    local instantCal = {
             { t = "text", text = "Answers the server's calibration check instantly with a perfect hit (supercomplete) and skips the minigame entirely. The three Affect toggles choose which machines it works on. Turn one off to play that kind of machine yourself while the others stay instant."},
             tog("Instant Calibration Success", "Instant"),
             { t = "toggle", text = "Great Job Text And Sounds", get = function() return Auto.Feedback end, set = function(v) Auto.Feedback = v end },
@@ -6794,15 +6909,29 @@ local function buildAutomationPage()
             { t = "toggle", text = "Affect Treadmill Machines", get = function() return Auto.InstantKinds.treadmill end, set = function(v) Auto.InstantKinds.treadmill = v end },
             { t = "slider", text = "Response Delay (Seconds)", min = 0, max = 2, dec = 2, step = 0.05,
                 get = function() return Auto.InstantDelay end, set = function(v) Auto.InstantDelay = v end },
-        } },
+    }
+    local function head(t) return { t = "text", text = t, font = "bold" } end
+    local function cat(...)
+        local out = {}
+        for _, list in ipairs({ ... }) do for _, c in ipairs(list) do out[#out + 1] = c end end
+        return out
+    end
+    return {
+        { title = "Machines", controls = cat(
+            { head("Auto Skill Checks") }, skillChecks,
+            { head("Swimmy Barnaby") }, swimmy,
+            { head("Auto Run (Treadmill Machines)") }, autoRun,
+            { head("Instant Calibration Success") }, instantCal) },
         { title = "Chase Safety", controls = {
             { t = "text", text = "Gets you off the machine the instant any Twisted starts chasing you. It works mid skill check too, and if you start extracting while a Twisted is chasing you, you get kicked right back off. Twisted Dessa doesn't count (she always comes for you once and only hurts with her charged attacks, so that's the only time you need to get off), and neither does your own Pursuer." },
             { t = "toggle", text = "Force Quit Machine When A Twisted Chases You", get = function() return Auto.ChaseQuit end,
                 set = function(v) Auto.ChaseQuit = v; Auto.Status = v and "Chase Safety on" or "Chase Safety off" end },
         } },
-        { title = "Auto Ability", controls = (function()
+        { title = "Ability", controls = (function()
             local A = Auto.Ability
+            local I = Auto.Inspire
             local ctl = {
+                head("Auto Ability"),
                 { t = "text", text = "Uses your ability for you, either as soon as it's off cooldown, or only when the conditions you pick are true. Twisted Dessa never counts toward a condition. Toggle abilities are never used automatically." },
                 { t = "toggle", text = "Auto Ability", get = function() return A.On end,
                     set = function(v) A.On = v; A.Status = v and "On" or "Off" end },
@@ -6819,6 +6948,16 @@ local function buildAutomationPage()
                 ctl[#ctl + 1] = { t = "text", text = "Immediately spotted: the moment a Twisted starts chasing you (only stays true for about a second). While chasing: for as long as a Twisted is still chasing you and hasn't lost interest. If you pick nothing, it waits forever and never fires." }
             end
             ctl[#ctl + 1] = { t = "readout", text = "Auto Ability", get = function() return A.Status end }
+            ctl[#ctl + 1] = head("Brusha: Inspire")
+            ctl[#ctl + 1] = { t = "text", text = "Only matters when you play Brusha. Her ability starts a painting minigame on the machine, where you swipe the mouse back and forth. Auto Inspire does the swiping for you, and the minigame still plays out on screen. Instant Inspire skips it completely and inspires the machine the moment you use your ability (it wins if both are on). Pair either one with Auto Ability and she paints every machine on her own." }
+            ctl[#ctl + 1] = { t = "toggle", text = "Auto Inspire", get = function() return I.Auto end,
+                set = function(v) I.Auto = v; Auto.Status = v and "Auto Inspire on" or "Auto Inspire off" end }
+            ctl[#ctl + 1] = { t = "toggle", text = "Instant Inspire", get = function() return I.Instant end,
+                set = function(v) I.Instant = v; Auto.Status = v and "Instant Inspire on" or "Instant Inspire off" end }
+            ctl[#ctl + 1] = { t = "slider", text = "Auto Inspire Swipe Speed", min = 0.5, max = 6, dec = 1, step = 0.5,
+                get = function() return I.Speed end, set = function(v) I.Speed = v end }
+            ctl[#ctl + 1] = { t = "slider", text = "Instant Inspire Delay (Seconds)", min = 0, max = 2, dec = 2, step = 0.05,
+                get = function() return I.Delay end, set = function(v) I.Delay = v end }
             return ctl
         end)() },
         { title = "Status", controls = {
@@ -6839,7 +6978,7 @@ Features.world = {
 }
 
 Features.automation = {
-    serialize = function() return { Snap = Auto.Snap, TapRate = Auto.TapRate, InstantDelay = Auto.InstantDelay, Feedback = Auto.Feedback, InstantKinds = { default = Auto.InstantKinds.default, circle = Auto.InstantKinds.circle, treadmill = Auto.InstantKinds.treadmill }, SwimmyHide = Auto.SwimmyHide, SwimmyCoins = Auto.SwimmyCoins, SwimmyHideCoins = Auto.SwimmyHideCoins, SwimmyInstantCoins = Auto.SwimmyInstantCoins, SwimmyCoinEvery = Auto.SwimmyCoinEvery, SwimmyRapid = Auto.SwimmyRapid, SwimmyRapidRate = Auto.SwimmyRapidRate } end,
+    serialize = function() return { Snap = Auto.Snap, TapRate = Auto.TapRate, InstantDelay = Auto.InstantDelay, Feedback = Auto.Feedback, InstantKinds = { default = Auto.InstantKinds.default, circle = Auto.InstantKinds.circle, treadmill = Auto.InstantKinds.treadmill }, SwimmyHide = Auto.SwimmyHide, SwimmyCoins = Auto.SwimmyCoins, SwimmyHideCoins = Auto.SwimmyHideCoins, SwimmyInstantCoins = Auto.SwimmyInstantCoins, SwimmyCoinEvery = Auto.SwimmyCoinEvery, SwimmyRapid = Auto.SwimmyRapid, SwimmyRapidRate = Auto.SwimmyRapidRate, InspireSpeed = Auto.Inspire.Speed, InspireDelay = Auto.Inspire.Delay } end,
     apply = function(data)               -- the auto skill check switches are saved by the "switches" entry
         if type(data) ~= "table" then return end
         if type(data.Snap) == "boolean" then Auto.Snap = data.Snap end
@@ -6854,6 +6993,8 @@ Features.automation = {
         Auto.TapRate = math.clamp(tonumber(data.TapRate) or Auto.TapRate, 0, 20)
         Auto.InstantDelay = math.clamp(tonumber(data.InstantDelay) or Auto.InstantDelay, 0, 2)
         Auto.SwimmyRapidRate = math.clamp(tonumber(data.SwimmyRapidRate) or Auto.SwimmyRapidRate, 1, 30)
+        Auto.Inspire.Speed = math.clamp(tonumber(data.InspireSpeed) or Auto.Inspire.Speed, 0.5, 6)
+        Auto.Inspire.Delay = math.clamp(tonumber(data.InspireDelay) or Auto.Inspire.Delay, 0, 2)
     end,
 }
 
@@ -11596,6 +11737,11 @@ Binds.renames = {
     { "^movement|Animation Sync|", "animations|Animation Sync|" },
     { "^esp|Shop Items|", "esp|Items|" },
     { "^esp|Ichor Puddles|Different Color For Finn's Puddle$", "esp|Ichor Puddles|Different Color For Twisted Finn's Ichor Puddles" },
+    { "^automation|Auto Skill Checks|", "automation|Machines|" },
+    { "^automation|Swimmy Barnaby|", "automation|Machines|" },
+    { "^automation|Auto Run %(Treadmill Machines%)|", "automation|Machines|" },
+    { "^automation|Instant Calibration Success|", "automation|Machines|" },
+    { "^automation|Auto Ability|", "automation|Ability|" },
 }
 function Binds.fixId(id)
     for _, r in ipairs(Binds.renames) do
@@ -11959,6 +12105,7 @@ Features.switches = {
             Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled, Blotspeak = Fun.Blot.Enabled, ChaseQuit = Auto.ChaseQuit, Ctrllock = Fun.Ctrl.On,
             AutoAbility = Auto.Ability.On, AutoAbilityCustom = Auto.Ability.Custom, AutoAbilityAll = Auto.Ability.All,
             AutoAbilitySpotted = Auto.Ability.Spotted, AutoAbilityChasing = Auto.Ability.Chasing,
+            AutoInspire = Auto.Inspire.Auto, InstantInspire = Auto.Inspire.Instant,
         }
     end,
     apply = function(d)
@@ -11987,6 +12134,8 @@ Features.switches = {
         for k, key in pairs({ AutoAbility = "On", AutoAbilityCustom = "Custom", AutoAbilityAll = "All", AutoAbilitySpotted = "Spotted", AutoAbilityChasing = "Chasing" }) do
             if has(k) then Auto.Ability[key] = d[k] end
         end
+        if has("AutoInspire") then Auto.Inspire.Auto = d.AutoInspire end
+        if has("InstantInspire") then Auto.Inspire.Instant = d.InstantInspire end
     end,
 }
 Features.customizer = { serialize = function() return Cust.serialize() end, apply = function(d) Cust.apply(d) end }
