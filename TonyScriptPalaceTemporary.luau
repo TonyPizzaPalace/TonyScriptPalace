@@ -4430,7 +4430,7 @@ end
 -- pursuer is chasing, so the game's own UI shows and counts it exactly like a Twisted.
 ----------------------------------------------------------------------
 SPOT_PATH = { ["Spotted"] = "Sounds.UI.Alerts.Spotted", ["Spotted 2"] = "Sounds.UI.Alerts.Spotted2" }
-audioMod
+audioMod = nil
 function playSpotted()
     local ok = pcall(function()
         audioMod = audioMod or require(game:GetService("ReplicatedStorage"):WaitForChild("SharedUtils", 2):WaitForChild("Audio", 2))
@@ -4449,7 +4449,7 @@ function playSpotted()
     end)
 end
 
-countConn
+countConn = nil
 function chaseAttr() return tonumber(LP:GetAttribute("ChaseCount")) or 0 end
 function writeCount(v) E.lastSet = v; LP:SetAttribute("ChaseCount", v) end
 function setCounted(want)
@@ -4504,7 +4504,7 @@ function beginChase(t)
 end
 
 -- Timer hud (like the Pizza Time bar)
-hud
+hud = nil
 function hudDestroy() if hud then pcall(function() hud.gui:Destroy() end); hud = nil end end
 function hudUpdate(show, text, frac, urgent)
     if not show then if hud then hud.gui.Enabled = false end; return end
@@ -4897,11 +4897,11 @@ end
 --#region ui-core
 -- UI core
 UI = { tabs = {}, cats = {}, current = "esp", curCat = "gameplay", catSel = {}, visible = not S.startHidden, sel = {} }   -- sel[tab id] = key of the section picked in that tab. cats = the top tabs, tabs = the sub-tabs listed down the side (tab.cat says which top tab they belong to), catSel[cat id] = the sub-tab last open in that top tab
-T                                   -- active style tokens
-gui, Win, Overlay, Content, StatusLbl, Orb, Grip, UIScaleObj, Host, Rail, PinPane
+T                                   -- active style tokens = nil
+gui, Win, Overlay, Content, StatusLbl, Orb, Grip, UIScaleObj, Host, Rail, PinPane = nil
 guiConns, popup, popupClose = {}, nil, nil
 activeDrag, listening = nil, nil
-buildGui, renderPage, applyLayout, toast, Destroy
+buildGui, renderPage, applyLayout, toast, Destroy = nil
 builders = {}
 liveList = {}   -- functions that refresh live text on the current page (5x per second)
 
@@ -6073,7 +6073,7 @@ end
 
 -- LAYOUT: every tab is a "section rail" (left) + one section at a time (middle) + an optional pinned pane (right, wide windows only).
 -- Nothing collapses and nothing needs a long scroll: pick a section in the rail and its controls fill the page.
-makePane, clearGui, loadSections   -- used by the skins, the library adapter and buildGui
+makePane, clearGui, loadSections   -- used by the skins, the library adapter and buildGui = nil
 do
 RAIL_W, PIN_W, PIN_MIN = 176, 300, 380                  -- rail width, pinned pane width, minimum width kept for the middle
 SIDE_W = { dandy = 200, aero = 190, xmb = 190, xp = 190 }   -- how much of the window the skin's own tab column takes
@@ -6333,7 +6333,7 @@ Auto.onChaseQuit = function(msg) toast(msg, "info") end
 -- EXTERNAL LIBRARY (optional, loaded safely)
 --   Dandy's World API Library : live game info (floor, machines, players alive...) for the World tab. Loads in the background.
 ----------------------------------------------------------------------
-fetchLib   -- download + run a library, returns (lib) or (nil, reason)
+fetchLib   -- download + run a library, returns (lib) or (nil, reason) = nil
 do
 loadStr = loadstring or env.loadstring
 
