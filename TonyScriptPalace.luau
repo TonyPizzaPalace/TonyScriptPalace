@@ -2403,7 +2403,7 @@ local Auto = {
     SwimmyRapid = false,        -- keep collecting coins non-stop, SwimmyRapidRate per second
     SwimmyRapidRate = 4,
     ChaseQuit = false,      -- Chase Safety: leave the machine the moment a Twisted is chasing you (even mid skill check)
-    Ability = { On = false, Custom = false, All = false, Spotted = false, Chasing = false, Status = "Off" },   -- Auto Ability. Custom = only when the chosen conditions are met (All = every one of them, otherwise any one)
+    Ability = { On = false, Custom = false, All = false, Spotted = false, Chasing = false, Strict = true, Status = "Off" },   -- Auto Ability. Custom = only when the chosen conditions are met (All = every one of them, otherwise any one)
     Inspire = { Auto = false, Instant = false, Speed = 3, Delay = 0 },   -- Brusha's paint minigame. Auto = swipe for you, Instant = skip it. Speed is in screen widths per second, Delay in seconds
     Status = "Idle",
 }
@@ -2812,12 +2812,45 @@ do
     -- Uses your ability the moment it is ready (cooldown over), or only when the conditions you picked are met. It presses the ability the way the HUD
     -- button does, so the game still applies its own rules (round only, no use while in the elevator, targeting, ...). Toggle abilities are left alone.
     local HP
-    local aa = { last = 0 }
+    local aa = { last = 0, wait = 1, denied = 0, pending = nil }
+    local PPC, HIR      -- the game's own press-prediction rules and heal rules (read only)
+    -- The checks the game's own PressPredictor makes before a press goes out. They mirror what the server enforces, so they are the best "will this work right now"
+    -- the client has. Returns the reason it can't be used, or nil. What the client can NOT see: whether a target exists / line of sight / being in range of something.
+    -- The server alone decides those, so they are handled by noticing refusals (see below).
+    local function whyNot(ch)
+        local Info = Workspace:FindFirstChild("Info")
+        local fa = Info and Info:FindFirstChild("FloorActive")
+        if not (fa and fa.Value == true) then return "the floor isn't active (elevator or between floors)" end
+        if LP:GetAttribute("DropMode") == true or ch:GetAttribute("DropMode") == true then return "drop mode is on" end
+        local toon = ch:GetAttribute("ToonName")
+        if PPC == nil then PPC = try(require, ReplicatedStorage.Modules.Data.PressPredictionConfig) or false end
+        local cfg = PPC and type(toon) == "string" and type(PPC.Abilities) == "table" and PPC.Abilities[toon] or nil
+        if type(cfg) == "table" and type(cfg.checks) == "table" then
+            local dec = ch:FindFirstChild("Decoding")
+            for _, c in ipairs(cfg.checks) do
+                if c == "NotExtracting" then
+                    if not (dec and dec.Value == nil) then return "you're extracting, and this ability can't be used while you do" end
+                elseif c == "Extracting" then
+                    if not (dec and dec.Value ~= nil) then return "you need to be extracting" end
+                elseif c == "CanHeal" then
+                    local hum = ch:FindFirstChildOfClass("Humanoid")
+                    if not hum then return "no humanoid" end
+                    if HIR == nil then HIR = try(require, ReplicatedStorage.Modules.Gameplay.HealingItemRules) or false end
+                    if HIR and try(HIR.atOneHeart, ch) then return "you're at one heart" end
+                    if hum.Health >= hum.MaxHealth then return "you're at full health" end
+                elseif c == "StaminaNotFull" then
+                    local st = ch:FindFirstChild("Stats")
+                    local cur, mx = st and st:FindFirstChild("CurrentStamina"), st and st:FindFirstChild("Stamina")
+                    if cur and mx and cur.Value >= mx.Value then return "your stamina is already full" end
+                end
+            end
+        end
+        return nil
+    end
     local function autoAbility()
         local A = Auto.Ability
         local now = os.clock()
         if A.Custom then chaseWatch() end         -- watched every frame, even on cooldown, so "just spotted" really means just now and not "the cooldown just ended mid-chase"
-        if now - aa.last < 1 then return end      -- if the game refuses a cast it won't be retried more than once a second
         local ch = LP.Character
         if not (ch and ch.Parent == Workspace:FindFirstChild("InGamePlayers")) then A.Status = "Waiting for a round"; return end
         if ch:GetAttribute("HasToggleAbility") == true then A.Status = "Your ability is a toggle, so it is never used automatically"; return end
@@ -2825,9 +2858,22 @@ do
         local ab = HP and HP.get("Ability")
         if not ab then A.Status = "The ability button isn't ready yet"; return end
         local left = tonumber(ab:get("cooldownRemaining")) or 0
+        -- Did the last press take? A cast starts the cooldown. If this ability has a cooldown and it still hasn't started, the server turned the press down
+        -- (no target, not in range, no line of sight, ...), so wait longer before the next try: 1s, 2.5s, 4s ... up to 8s. A cooldown that starts clears it.
+        if aa.pending and now - aa.pending >= 0.8 then
+            if left > 0.2 then aa.denied = 0
+            elseif (tonumber(ab:get("cooldownTotal")) or 0) > 0 then aa.denied += 1 end
+            aa.pending = nil
+        end
+        if now - aa.last < (A.Strict and math.min(1 + aa.denied * 1.5, 8) or 1) then return end
         if left > 0 or ab:get("cooldownLocked") == true or ab:get("elevatorDrop") == true then
             A.Status = left > 0 and string.format("Cooldown, %.0fs left", left) or "Can't be used right now"
             return
+        end
+        if A.Strict then
+            if ab:get("healLocked") == true then A.Status = "Waiting: heals are on their shared cooldown"; return end
+            local why = whyNot(ch)
+            if why then A.Status = "Waiting: " .. why; return end
         end
         if A.Custom then
             local w = chaseWatch()
@@ -2838,8 +2884,9 @@ do
             if not ((A.All and hits == picks) or (not A.All and hits > 0)) then A.Status = "Ready, waiting for the conditions"; return end
         end
         aa.last = now
+        aa.pending = now
         pcall(ab.fire, ab, "activated")
-        A.Status = "Used your ability"
+        A.Status = aa.denied > 0 and string.format("Tried it (the game has refused it %d time%s in a row)", aa.denied, aa.denied == 1 and "" or "s") or "Used your ability"
     end
 
     -- ---------------------------------------------------------- INSPIRE (Brusha)
@@ -6535,11 +6582,12 @@ Features.twistedvis = (function()
             VisionRadius  = { On = false, Color = C(255, 255, 0),   Label = "Vision Radius" },
             LineOfSight   = { On = false, Color = C(255, 255, 255), Label = "Line Of Sight" },
         },
-        Shape = "Flat", FillCone = false, AlertMode = "Off", AlertColor = C(255, 0, 0), Transparency = 0.75, ThroughWalls = false, IncludeDessa = true,
+        Shape = "Flat", Style = "Outline", Thickness = 0.4, FillCone = false, AlertMode = "Off", AlertColor = C(255, 0, 0), Transparency = 0.75, ThroughWalls = false, IncludeDessa = true,
         Chase = { Mode = "Off", Style = "Default", MatchType = true, HideOnScreen = false, IncludeDessa = true },
     }
     local DEFAULT_COLORS = { HearingRadius = C(0, 255, 0), InstantRadius = C(255, 128, 0), KillRadius = C(255, 0, 0), VisionRadius = C(255, 255, 0), LineOfSight = C(255, 255, 255) }
     local SHAPES = { "Flat", "Sphere" }
+    local STYLES = { "Outline", "Filled" }
     local ALERT_MODES = { "Off", "When I'm In It", "When I'm In It And It's Chasing Me" }
     local RADII_ORDER = { "HearingRadius", "VisionRadius", "InstantRadius", "KillRadius" }   -- biggest discs first so the small ones draw on top
     local CHASE_MODES = { "Off", "While Chased", "Always" }
@@ -6617,7 +6665,8 @@ Features.twistedvis = (function()
     local function dropModel(m)
         local t = live[m]; if not t then return end
         for k, a in pairs(t) do
-            if k == "los" then for _, x in ipairs(a) do killAd(x) end elseif k ~= "losKind" then killAd(a) end
+            if k == "los" then for _, x in ipairs(a) do killAd(x) end
+            elseif k ~= "losKind" and type(a) == "table" and a.list then for _, x in ipairs(a.list) do killAd(x) end end
         end
         live[m] = nil
     end
@@ -6675,7 +6724,7 @@ Features.twistedvis = (function()
         local list = t.los
         local base = CFrame.new(0, -drop + 0.1, 0)
         local function place(a, cf, len)
-            a.Adornee = root; a.Radius = 0.3; a.Height = len; a.CFrame = cf; look(a, col, 5)
+            a.Adornee = root; a.Radius = TV.Thickness / 2; a.Height = len; a.CFrame = cf; look(a, col, 5)
         end
         local steps = full and ARC_STEPS * 2 or ARC_STEPS
         local span = full and 2 * math.pi or 2 * half
@@ -6691,6 +6740,63 @@ Features.twistedvis = (function()
             place(list[steps + 2], base * CFrame.Angles(0, -half, 0) * CFrame.new(0, 0, -vr / 2), vr)
         end
     end
+    -- Each radius is either ONE flat disc / orb (Filled) or a ring of thin bars (Outline). Filled layers stack when Twisteds' ranges overlap and get very bright,
+    -- an outline hardly does, so Outline is the default. A flat ring is one circle on the floor; an orb outline is three circles (flat, and two standing up).
+    local function killList(e) if e and e.list then for _, x in ipairs(e.list) do killAd(x) end end end
+    local function ensureList(t, key, sig, class, n)
+        local e = t[key]
+        if e and e.sig == sig then
+            for _, x in ipairs(e.list) do if not x.Parent then e.sig = nil; break end end      -- one was removed from under us: rebuild
+            if e.sig == sig then return e end
+        end
+        killList(e)
+        local list = {}
+        for i = 1, n do local a = Instance.new(class); a.Name = key; a.Parent = ensureHolder(); list[i] = a end
+        e = { sig = sig, list = list }
+        t[key] = e
+        return e
+    end
+    local function ringCount(r, sphere)
+        if sphere then return r < 6 and 12 or (r < 40 and 20 or 28) end
+        return r < 6 and 16 or (r < 40 and 28 or 40)
+    end
+    local RING_ROT = { CFrame.new(), CFrame.Angles(math.pi / 2, 0, 0), CFrame.Angles(0, 0, math.pi / 2) }
+    local function drawRadius(t, key, root, drop, v, cfg, z)
+        local sphere = TV.Shape == "Sphere"
+        if TV.Style == "Filled" then
+            local class = sphere and "SphereHandleAdornment" or "CylinderHandleAdornment"
+            local a = ensureList(t, key, "fill" .. class, class, 1).list[1]
+            a.Adornee = root
+            a.Radius = v
+            if sphere then
+                a.CFrame = CFrame.new()            -- an orb around the Twisted's middle, like a hitbox
+            else
+                a.Height = 0.15
+                a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0)
+            end
+            look(a, cfg.Color, z)
+            return
+        end
+        local n = ringCount(v, sphere)
+        local rings = sphere and 3 or 1
+        local e = ensureList(t, key, "ring" .. n .. (sphere and "s" or "f"), "CylinderHandleAdornment", n * rings)
+        local geo = string.format("%.3f|%.3f|%.2f", v, drop, TV.Thickness)
+        if e.geo ~= geo then          -- the shape only needs redoing when the radius, the floor height or the thickness changed; the bars follow the Twisted by themselves
+            e.geo = geo
+            local center = sphere and CFrame.new() or CFrame.new(0, -drop + 0.1, 0)
+            local dTheta = 2 * math.pi / n
+            local chord = 2 * v * math.sin(dTheta / 2) * 1.03
+            for r = 1, rings do
+                local base = center * RING_ROT[r]
+                for i = 1, n do
+                    local a = e.list[(r - 1) * n + i]
+                    a.Adornee = root; a.Radius = TV.Thickness / 2; a.Height = chord
+                    a.CFrame = base * CFrame.Angles(0, -(i - 0.5) * dTheta, 0) * CFrame.new(0, 0, -v * math.cos(dTheta / 2)) * CFrame.Angles(0, math.pi / 2, 0)
+                end
+            end
+        end
+        for _, a in ipairs(e.list) do a.Adornee = root; look(a, cfg.Color, z) end
+    end
     local function sweepRadii()
         local seen = {}
         if anyRadiusOn() then
@@ -6703,24 +6809,12 @@ Features.twistedvis = (function()
                         local hum = m:FindFirstChildOfClass("Humanoid")
                         local drop = root.Size.Y / 2 + (hum and hum.HipHeight or 0)      -- from the root part down to the floor under it
                         for i, key in ipairs(RADII_ORDER) do
-                            local cfg, a = TV.Radii[key], t[key]
+                            local cfg = TV.Radii[key]
                             local v = cfg.On and stat(m, key) or nil
                             if v and v > 0 and v < 5000 then      -- (Twisted Dyle's hearing is 9999: "everywhere", not worth drawing)
-                                local sphere = TV.Shape == "Sphere"
-                                local class = sphere and "SphereHandleAdornment" or "CylinderHandleAdornment"
-                                if a and (not a.Parent or a.ClassName ~= class) then killAd(a); a = nil end      -- the shape was switched
-                                if not a then a = Instance.new(class); a.Name = key; a.Parent = ensureHolder(); t[key] = a end
-                                a.Adornee = root
-                                a.Radius = v
-                                if sphere then
-                                    a.CFrame = CFrame.new()            -- an orb around the Twisted's middle, like a hitbox
-                                else
-                                    a.Height = 0.15
-                                    a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0)
-                                end
-                                look(a, cfg.Color, i)
-                            elseif a then
-                                killAd(a); t[key] = nil
+                                drawRadius(t, key, root, drop, v, cfg, i)
+                            elseif t[key] then
+                                killList(t[key]); t[key] = nil
                             end
                         end
                         local los = TV.Radii.LineOfSight
@@ -6821,8 +6915,10 @@ Features.twistedvis = (function()
     -- ------------------------------------------------------------ page
     local function build()
         local secs = {}
-        local rc = { { t = "text", text = "Draws each Twisted's ranges around it (radius in studs). Shape: Flat is a disc on the floor under it, Sphere is an orb around its middle (handy for Kill Radius, which works like a hitbox). Line Of Sight is a cone in front of it: the game stores it as a number (0.4 for most Twisteds) that works like how directly it has to face you to see you, so the cone's width comes from that number and its length from the Vision Radius. The values are each Twisted's base stats. Cards that change them (Deaf Ears, Nearsighted and so on) are applied by the server and aren't reflected here." },
-            { t = "dropdown", text = "Shape", get = function() return TV.Shape end, options = function() return SHAPES end, set = function(o) TV.Shape = o; refreshPage() end } }
+        local rc = { { t = "text", text = "Draws each Twisted's ranges around it (radius in studs). Style: Outline is a thin ring, Filled is a solid see-through shape. Filled layers add up where ranges overlap and can get very bright, so Outline is the default. Shape: Flat is on the floor under the Twisted, Sphere is around its middle (handy for Kill Radius, which works like a hitbox). Line Of Sight is a cone in front of it: the game stores it as a number (0.4 for most Twisteds) that works like how directly it has to face you to see you, so the cone's width comes from that number and its length from the Vision Radius. The values are each Twisted's base stats. Cards that change them (Deaf Ears, Nearsighted and so on) are applied by the server and aren't reflected here." },
+            { t = "dropdown", text = "Style", get = function() return TV.Style end, options = function() return STYLES end, set = function(o) TV.Style = o; refreshPage() end },
+            { t = "dropdown", text = "Shape", get = function() return TV.Shape end, options = function() return SHAPES end, set = function(o) TV.Shape = o; refreshPage() end },
+            { t = "slider", text = "Outline Thickness", min = 0.1, max = 1.5, dec = 2, get = function() return TV.Thickness end, set = function(v) TV.Thickness = v end } }
         for _, key in ipairs({ "HearingRadius", "VisionRadius", "InstantRadius", "KillRadius", "LineOfSight" }) do
             local cfg = TV.Radii[key]
             rc[#rc + 1] = { t = "toggle", text = "Show " .. cfg.Label, get = function() return cfg.On end, set = function(v) cfg.On = v end }
@@ -6835,7 +6931,7 @@ Features.twistedvis = (function()
                 rc[#rc + 1] = { t = "text", text = "Line Of Sight Alert turns that Twisted's cone to the alert color while you are standing in it. The second choice only does it for a Twisted that is also chasing you (its Chasing flag is on and its ChasingValue is you). \"In it\" means within its Vision Radius and in front of it by its Line Of Sight number; walls aren't checked, so it can go red when something is in the way." }
             end
         end
-        rc[#rc + 1] = { t = "slider", text = "Transparency", min = 0.3, max = 0.95, dec = 2, get = function() return TV.Transparency end, set = function(v) TV.Transparency = v end }
+        rc[#rc + 1] = { t = "slider", text = "Transparency (Filled)", min = 0.3, max = 0.95, dec = 2, get = function() return TV.Transparency end, set = function(v) TV.Transparency = v end }
         rc[#rc + 1] = { t = "toggle", text = "Show Through Walls", get = function() return TV.ThroughWalls end, set = function(v) TV.ThroughWalls = v end }
         rc[#rc + 1] = { t = "toggle", text = "Include Twisted Dessa", get = function() return TV.IncludeDessa end, set = function(v) TV.IncludeDessa = v end }
         secs[#secs + 1] = { title = "Radius Visualizers", controls = rc }
@@ -6858,7 +6954,7 @@ Features.twistedvis = (function()
         local r = {}
         for k, cfg in pairs(TV.Radii) do r[k] = { On = cfg.On, Color = hexOf(cfg.Color) } end
         local c = TV.Chase
-        return { Radii = r, Shape = TV.Shape, FillCone = TV.FillCone, AlertMode = TV.AlertMode, AlertColor = hexOf(TV.AlertColor), Transparency = TV.Transparency, ThroughWalls = TV.ThroughWalls, IncludeDessa = TV.IncludeDessa,
+        return { Radii = r, Shape = TV.Shape, Style = TV.Style, Thickness = TV.Thickness, FillCone = TV.FillCone, AlertMode = TV.AlertMode, AlertColor = hexOf(TV.AlertColor), Transparency = TV.Transparency, ThroughWalls = TV.ThroughWalls, IncludeDessa = TV.IncludeDessa,
             Chase = { Mode = c.Mode, Style = c.Style, MatchType = c.MatchType, HideOnScreen = c.HideOnScreen, IncludeDessa = c.IncludeDessa } }
     end
     local function apply(d)
@@ -6873,6 +6969,8 @@ Features.twistedvis = (function()
             end
         end
         if table.find(SHAPES, d.Shape) then TV.Shape = d.Shape end
+        if table.find(STYLES, d.Style) then TV.Style = d.Style end
+        if type(d.Thickness) == "number" then TV.Thickness = math.clamp(d.Thickness, 0.1, 1.5) end
         if type(d.FillCone) == "boolean" then TV.FillCone = d.FillCone end
         if table.find(ALERT_MODES, d.AlertMode) then TV.AlertMode = d.AlertMode end
         TV.AlertColor = colorOf(d.AlertColor) or TV.AlertColor
@@ -7380,6 +7478,8 @@ local function buildAutomationPage()
                 { t = "dropdown", text = "Use It", get = function() return A.Custom and "Only When Conditions Are Met" or "As Soon As It's Ready" end,
                     options = function() return { "As Soon As It's Ready", "Only When Conditions Are Met" } end,
                     set = function(o) A.Custom = (o == "Only When Conditions Are Met"); refreshPage() end },
+                { t = "toggle", text = "Only When The Game Allows It", get = function() return A.Strict end, set = function(v) A.Strict = v end },
+                { t = "text", text = "On: it only presses your ability when the checks the game itself makes are passed (floor active, not in drop mode, not extracting if your ability can't be used while extracting, heals not at one heart or full health, ...). If the game still turns a press down (no target, out of range, no line of sight: only the server can tell), it waits longer before each retry, up to 8 seconds, instead of retrying every second. Off: it just tries once a second." },
             }
             if A.Custom then
                 ctl[#ctl + 1] = { t = "dropdown", text = "Conditions Needed", get = function() return A.All and "All Of The Ones I Pick" or "Any One Of The Ones I Pick" end,
@@ -12564,7 +12664,7 @@ Features.switches = {
             AutoDefault = Auto.Default, AutoCircle = Auto.Circle, AutoTreadmill = Auto.Treadmill, AutoSwimmy = Auto.Swimmy, AutoInstant = Auto.Instant,
             Pursuer = pc.Enabled, MoreSkillChecks = Fun.Enabled, Blotspeak = Fun.Blot.Enabled, ChaseQuit = Auto.ChaseQuit, Ctrllock = Fun.Ctrl.On,
             AutoAbility = Auto.Ability.On, AutoAbilityCustom = Auto.Ability.Custom, AutoAbilityAll = Auto.Ability.All,
-            AutoAbilitySpotted = Auto.Ability.Spotted, AutoAbilityChasing = Auto.Ability.Chasing,
+            AutoAbilitySpotted = Auto.Ability.Spotted, AutoAbilityChasing = Auto.Ability.Chasing, AutoAbilityStrict = Auto.Ability.Strict,
             AutoInspire = Auto.Inspire.Auto, InstantInspire = Auto.Inspire.Instant,
         }
     end,
@@ -12591,7 +12691,7 @@ Features.switches = {
         if has("Blotspeak") then Fun.Blot.Set(d.Blotspeak) end
         if has("ChaseQuit") then Auto.ChaseQuit = d.ChaseQuit == true end
         if has("Ctrllock") then Fun.Ctrl.Set(d.Ctrllock) end
-        for k, key in pairs({ AutoAbility = "On", AutoAbilityCustom = "Custom", AutoAbilityAll = "All", AutoAbilitySpotted = "Spotted", AutoAbilityChasing = "Chasing" }) do
+        for k, key in pairs({ AutoAbility = "On", AutoAbilityCustom = "Custom", AutoAbilityAll = "All", AutoAbilitySpotted = "Spotted", AutoAbilityChasing = "Chasing", AutoAbilityStrict = "Strict" }) do
             if has(k) then Auto.Ability[key] = d[k] end
         end
         if has("AutoInspire") then Auto.Inspire.Auto = d.AutoInspire end
