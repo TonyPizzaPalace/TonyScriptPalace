@@ -1,20 +1,22 @@
--- Fixed version with error reporting for Tony Script Palace
--- Original script often fails silently on executors missing certain functions or when an error occurs early.
--- This wrapper prints errors to the console (check your executor output / F9).
+-- Improved fixed version with traceback for Tony Script Palace
+-- Run this and check your executor console / F9 for the full error and how far it got.
 
-local function reportError(msg)
-    warn("[TonyScriptPalace] ERROR: " .. tostring(msg))
+print("[TonyScriptPalace] Starting load...")
+
+local function reportError(msg, tb)
+    local full = tostring(msg) .. "\n" .. tostring(tb or "")
+    warn("[TonyScriptPalace] ERROR:\n" .. full)
     pcall(function()
         local Players = game:GetService("Players")
         local LP = Players.LocalPlayer
         if LP then
-            LP:Kick("Tony Script Palace failed to load. Check executor console for the error: " .. tostring(msg):sub(1, 200))
+            LP:Kick("Tony Script Palace error (see console):\n" .. tostring(msg):sub(1, 300))
         end
     end)
 end
 
-local ok, err = pcall(function()
--- Original script starts below
+local ok, err = xpcall(function()
+print("[TonyScriptPalace] Inside protected block, original script starting...")
 --#region header
 --[[
     Tony Script Palace
@@ -13229,6 +13231,7 @@ function buildGui()
 end
 
 --#endregion build-gui
+print("[TonyScriptPalace] Reached boot section")
 --#region boot
 -- Input + boot + cleanup
 connect(UIS.InputChanged, function(i)
@@ -13301,16 +13304,23 @@ if S.autoload and S.lastConfig ~= "" and fileExists(cfgPath(S.lastConfig)) then
     pcall(loadConfig, S.lastConfig)
 end
 
+print("[TonyScriptPalace] Calling buildGui()...")
 buildGui()
+print("[TonyScriptPalace] buildGui() returned")
 DWAPI.load()
 if S.style == "xmb" or S.style == "xp" then uiWhenReady("boot") end
 toast("Tony Script Palace ready (Dandy's World only). Press " .. S.keybind .. " to hide or show.", "info")
 
 --#endregion boot
-end) -- end of pcall
-if not ok then
-    reportError(err)
+print("[TonyScriptPalace] Protected block finished without error")
+end, function(err)
+    reportError(err, debug.traceback())
+    return err
+end)
+
+if ok then
+    print("[TonyScriptPalace] Script fully loaded. GUI should appear or press RightShift.")
 else
-    print("[TonyScriptPalace] Script loaded successfully. GUI should be visible (or press RightShift).")
+    print("[TonyScriptPalace] Script failed - see error above.")
 end
 
