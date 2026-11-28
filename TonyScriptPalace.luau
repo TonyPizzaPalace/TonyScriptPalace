@@ -257,6 +257,7 @@ local Cfg = {
         GlitterGlue = { Enabled = true, Fill = true, Color = C(128, 0, 255) },   -- the puddle the Glitter Glue item leaves (the GlitterGluePuddle model)
         Tendrils   = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Sprout's tendrils (SproutTendril)
         GigiStash  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Gigi's Stash (the GigiHoard model in the room's Items folder)
+        AstroHallucinations = { Enabled = true, Fill = true, Mode = "One Color", Color = C(0, 0, 255) },   -- everything in Workspace.AstroNightmareHallucinations (Twisted Astro's Nightmare). Mode: "One Color" or "By What They Are"
         Elevator   = { Enabled = true, Fill = true, Color = C(0, 255, 0), Fake = true, FakeColor = C(255, 0, 0) },   -- the real elevator's ElevatorDoor, and optionally the fake elevators' doors
         RazzleVines = { Enabled = true, Fill = true, Color = C(255, 0, 0) },     -- Twisted Razzle & Dazzle's vines (the RazzleVine MeshParts in the room's FreeArea)
         BlotHands  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Blot's hands (the Arm in each BlotHand_R / BlotHand_L)
@@ -611,6 +612,35 @@ do
                         end
                     end
                 end
+            end
+        end
+
+        -- Twisted Astro's Nightmare fills Workspace.AstroNightmareHallucinations with fake Twisteds, machines and items. They carry the same names and parts as the real ones,
+        -- so they are told apart by what they look like inside: a Twisted has the Chasing / LostInterest values (and is named <Name>Monster), a machine has Stats / MachineFamily,
+        -- and anything else is an item. One Color paints them all the same. By What They Are colors a fake Twisted like a Twisted, a fake machine like a machine (by its state,
+        -- though a fake one has no real progress, so it usually shows as Incomplete), and a fake item like that item.
+        if cats.AstroHallucinations.Enabled then
+            local ah = cats.AstroHallucinations
+            local hf = Workspace:FindFirstChild("AstroNightmareHallucinations")
+            if hf then
+                local its = cats.Items
+                local function kindOf(c)
+                    if c.Name:find("Monster$") or c:FindFirstChild("Chasing") or c:FindFirstChild("LostInterest") then return "Twisted" end
+                    local stats = c:FindFirstChild("Stats")
+                    if c.Name:find("Generator") or c.Name:find("DualGen") or c:GetAttribute("MachineFamily") ~= nil or c:GetAttribute("IsDualGen") ~= nil
+                        or (stats and stats:FindFirstChild("Completed")) then return "Machine" end
+                    return "Item"
+                end
+                local function addHall(c)
+                    if c:IsA("Folder") then for _, k in ipairs(c:GetChildren()) do addHall(k) end; return end      -- in case they are sorted into sub-folders
+                    if not validTarget(c) then return end
+                    if ah.Mode ~= "By What They Are" then add(c, ah.Color, "AstroHallucinations"); return end
+                    local kind = kindOf(c)
+                    if kind == "Twisted" then add(c, cats.Twisteds.Color, "AstroHallucinations")
+                    elseif kind == "Machine" then add(c, (machineState(c)), "AstroHallucinations")
+                    elseif not its.Hidden[c.Name] then add(c, its.PerItem and (its.Colors[c.Name] or its.Fallback) or its.Color, "AstroHallucinations") end
+                end
+                for _, c in ipairs(hf:GetChildren()) do addHall(c) end
             end
         end
 
@@ -6414,7 +6444,7 @@ local function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) 
 
 local function resetESPColors()
     local c, d = Cfg.Categories, DEF.Categories
-    for _, k in ipairs({ "Players", "Twisteds", "Ichorlings", "GlitterGlue", "Tendrils", "BlotHands", "RazzleVines", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
+    for _, k in ipairs({ "Players", "Twisteds", "Ichorlings", "GlitterGlue", "Tendrils", "BlotHands", "RazzleVines", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows", "AstroHallucinations" }) do c[k].Color = d[k].Color end
     c.Elevator.FakeColor = d.Elevator.FakeColor
     c.IchorPuddles.FinnColor = d.IchorPuddles.FinnColor
     c.Items.ShopColor, c.Items.ShopAffordColor, c.Items.ShopNoAffordColor = d.Items.ShopColor, d.Items.ShopAffordColor, d.Items.ShopNoAffordColor
@@ -6559,6 +6589,16 @@ local function buildESPPage()
     secs[#secs + 1] = { title = "Twisted Sprout's Tendrils", controls = { tg("Enabled", cats.Tendrils, "Enabled"), tg("Fill", cats.Tendrils, "Fill"), cl("Color", cats.Tendrils, "Color", DEF.Categories.Tendrils) } }
     secs[#secs + 1] = { title = "Twisted Blot's Hands", controls = { tg("Enabled", cats.BlotHands, "Enabled"), tg("Fill", cats.BlotHands, "Fill"), cl("Color", cats.BlotHands, "Color", DEF.Categories.BlotHands) } }
     secs[#secs + 1] = { title = "Twisted Razzle & Dazzle's Vines", controls = { tg("Enabled", cats.RazzleVines, "Enabled"), tg("Fill", cats.RazzleVines, "Fill"), cl("Color", cats.RazzleVines, "Color", DEF.Categories.RazzleVines) } }
+    local ah = cats.AstroHallucinations
+    local AH_MODES = { "One Color", "By What They Are" }
+    local ahCtl = {
+        tg("Highlight Astro's Hallucinations", ah, "Enabled"), tg("Fill", ah, "Fill"),
+        { t = "dropdown", text = "Colors", get = function() return ah.Mode end, options = function() return AH_MODES end,
+            set = function(o) ah.Mode = o; espDirty = true; refreshPage() end },
+    }
+    if ah.Mode ~= "By What They Are" then ahCtl[#ahCtl + 1] = cl("Color", ah, "Color", DEF.Categories.AstroHallucinations) end
+    ahCtl[#ahCtl + 1] = { t = "text", text = "Twisted Astro's Nightmare fills the floor with fake Twisteds, machines and items that look and are named exactly like the real ones. One Color paints all of them the same color. By What They Are colors fake Twisteds like Twisteds, fake machines like machines, and fake items by what item they are, using the colors set in those sections (an item you've hidden stays hidden). Fake machines have no real progress, so they usually show up as Incomplete." }
+    secs[#secs + 1] = { title = "Twisted Astro's Hallucinations", controls = ahCtl }
     secs[#secs + 1] = { title = "Ichor Puddles", controls = {
         tg("Enabled", cats.IchorPuddles, "Enabled"), tg("Fill", cats.IchorPuddles, "Fill"), cl("Color", cats.IchorPuddles, "Color", DEF.Categories.IchorPuddles),
         tg("Include Puddle Tops", cats.IchorPuddles, "Tops"),
@@ -6582,7 +6622,7 @@ Features.twistedvis = (function()
             VisionRadius  = { On = false, Color = C(255, 255, 0),   Label = "Vision Radius" },
             LineOfSight   = { On = false, Color = C(255, 255, 255), Label = "Line Of Sight" },
         },
-        Shape = "Flat", Style = "Outline", Thickness = 0.4, FillCone = false, AlertMode = "Off", AlertColor = C(255, 0, 0), Transparency = 0.75, ThroughWalls = false, IncludeDessa = true,
+        Shape = "Sphere", Style = "Filled", Thickness = 0.25, FillCone = false, HideLosChased = true, AlertMode = "Off", AlertColor = C(255, 0, 0), Transparency = 0.75, ThroughWalls = false, IncludeDessa = true,
         Chase = { Mode = "Off", Style = "Default", MatchType = true, HideOnScreen = false, IncludeDessa = true },
     }
     local DEFAULT_COLORS = { HearingRadius = C(0, 255, 0), InstantRadius = C(255, 128, 0), KillRadius = C(255, 0, 0), VisionRadius = C(255, 255, 0), LineOfSight = C(255, 255, 255) }
@@ -6661,12 +6701,22 @@ Features.twistedvis = (function()
         holder = Instance.new("Folder"); holder.Name = "TonyScriptPalaceVisuals"; holder.Parent = guiParent()
         return holder
     end
+    local partHolder      -- the Filled style is made of real parts (they have to be in the Workspace to be seen), so they live in their own folder there
+    local function ensurePartHolder()
+        if partHolder and partHolder.Parent then return partHolder end
+        partHolder = Instance.new("Folder"); partHolder.Name = "TonyScriptPalaceVisualParts"; partHolder.Parent = Workspace
+        return partHolder
+    end
     local function killAd(a) if a then pcall(function() a:Destroy() end) end end
+    local followList = {}      -- Filled entries whose part has to be moved to follow its Twisted every frame
+    local function killList(e)
+        if e and e.list then followList[e] = nil; for _, x in ipairs(e.list) do killAd(x) end end
+    end
     local function dropModel(m)
         local t = live[m]; if not t then return end
         for k, a in pairs(t) do
             if k == "los" then for _, x in ipairs(a) do killAd(x) end
-            elseif k ~= "losKind" and type(a) == "table" and a.list then for _, x in ipairs(a.list) do killAd(x) end end
+            elseif k ~= "losKind" and type(a) == "table" and a.list then killList(a) end
         end
         live[m] = nil
     end
@@ -6711,6 +6761,7 @@ Features.twistedvis = (function()
             a.Adornee = root; a.Radius = vr; a.Height = 0.15; a.Angle = math.min(360, math.deg(half) * 2)
             a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0) * CFrame.Angles(0, 0, -(math.pi / 2 + half))
             look(a, col, 5)
+            a.Transparency = math.max(TV.Transparency, 0.85)      -- always faint, so cones that cross don't turn into a glare
             return
         end
         local full = half >= math.pi - 0.001
@@ -6742,7 +6793,6 @@ Features.twistedvis = (function()
     end
     -- Each radius is either ONE flat disc / orb (Filled) or a ring of thin bars (Outline). Filled layers stack when Twisteds' ranges overlap and get very bright,
     -- an outline hardly does, so Outline is the default. A flat ring is one circle on the floor; an orb outline is three circles (flat, and two standing up).
-    local function killList(e) if e and e.list then for _, x in ipairs(e.list) do killAd(x) end end end
     local function ensureList(t, key, sig, class, n)
         local e = t[key]
         if e and e.sig == sig then
@@ -6751,7 +6801,7 @@ Features.twistedvis = (function()
         end
         killList(e)
         local list = {}
-        for i = 1, n do local a = Instance.new(class); a.Name = key; a.Parent = ensureHolder(); list[i] = a end
+        for i = 1, n do local a = Instance.new(class); a.Name = key; a.Parent = (class == "Part") and ensurePartHolder() or ensureHolder(); list[i] = a end
         e = { sig = sig, list = list }
         t[key] = e
         return e
@@ -6764,17 +6814,22 @@ Features.twistedvis = (function()
     local function drawRadius(t, key, root, drop, v, cfg, z)
         local sphere = TV.Shape == "Sphere"
         if TV.Style == "Filled" then
-            local class = sphere and "SphereHandleAdornment" or "CylinderHandleAdornment"
-            local a = ensureList(t, key, "fill" .. class, class, 1).list[1]
-            a.Adornee = root
-            a.Radius = v
-            if sphere then
-                a.CFrame = CFrame.new()            -- an orb around the Twisted's middle, like a hitbox
-            else
-                a.Height = 0.15
-                a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0)
+            -- Filled copies how Twisted Astro's Nightmare is drawn (NightmareStage1-3): a ForceField-material part. A ForceField is see-through with a faint pattern and a glow
+            -- where it meets floors and walls, so overlapping ranges stay readable instead of piling up into a solid glare. Seen from inside an orb you don't see the orb
+            -- itself, only that glowing line where it meets the floor and walls. Real parts don't follow anything on their own, so stepFollow moves them every frame.
+            local e = ensureList(t, key, sphere and "ffBall" or "ffDisc", "Part", 1)
+            local part = e.list[1]
+            if not e.init then
+                e.init = true
+                part.Anchored = true; part.CanCollide = false; part.CanQuery = false; part.CanTouch = false; part.CastShadow = false
+                part.Material = Enum.Material.ForceField
+                part.Shape = sphere and Enum.PartType.Ball or Enum.PartType.Cylinder
             end
-            look(a, cfg.Color, z)
+            part.Color = cfg.Color
+            part.Transparency = TV.Transparency
+            part.Size = sphere and Vector3.new(v * 2, v * 2, v * 2) or Vector3.new(0.15, v * 2, v * 2)      -- a cylinder part's axis is its X, so the disc is turned up on its side below
+            e.root, e.drop, e.sphere = root, drop, sphere
+            followList[e] = true
             return
         end
         local n = ringCount(v, sphere)
@@ -6818,7 +6873,7 @@ Features.twistedvis = (function()
                             end
                         end
                         local los = TV.Radii.LineOfSight
-                        if los.On then drawCone(m, t, root, drop, los)
+                        if los.On and not (TV.HideLosChased and isChasingMe(m)) then drawCone(m, t, root, drop, los)
                         else clearCone(t) end
                     end
                 end
@@ -6910,12 +6965,22 @@ Features.twistedvis = (function()
         acc += dt
         if acc >= 0.2 then acc = 0; pcall(sweepRadii) end
     end)
-    connect(RunService.RenderStepped, function() pcall(stepChase) end)
+    local function stepFollow()
+        for e in pairs(followList) do
+            local root, part = e.root, e.list[1]
+            if root and root.Parent and part and part.Parent then
+                local pos = root.Position
+                if e.sphere then part.CFrame = CFrame.new(pos)
+                else part.CFrame = CFrame.new(pos.X, pos.Y - e.drop + 0.1, pos.Z) * CFrame.Angles(0, 0, math.pi / 2) end
+            end
+        end
+    end
+    connect(RunService.RenderStepped, function() pcall(stepFollow); pcall(stepChase) end)
 
     -- ------------------------------------------------------------ page
     local function build()
         local secs = {}
-        local rc = { { t = "text", text = "Draws each Twisted's ranges around it (radius in studs). Style: Outline is a thin ring, Filled is a solid see-through shape. Filled layers add up where ranges overlap and can get very bright, so Outline is the default. Shape: Flat is on the floor under the Twisted, Sphere is around its middle (handy for Kill Radius, which works like a hitbox). Line Of Sight is a cone in front of it: the game stores it as a number (0.4 for most Twisteds) that works like how directly it has to face you to see you, so the cone's width comes from that number and its length from the Vision Radius. The values are each Twisted's base stats. Cards that change them (Deaf Ears, Nearsighted and so on) are applied by the server and aren't reflected here." },
+        local rc = { { t = "text", text = "Draws each Twisted's ranges around it (radius in studs). Style: Filled is drawn like Twisted Astro's Nightmare, as a see-through forcefield (overlapping ranges stay readable, no glare; from inside an orb you see the glowing line where it meets the floor and walls). Outline is a thin ring. Show Through Walls only affects Outline and the Line Of Sight cone, because a forcefield is a real object in the world. Shape: Flat is on the floor under the Twisted, Sphere is around its middle (handy for Kill Radius, which works like a hitbox). Line Of Sight is a cone in front of it: the game stores it as a number (0.4 for most Twisteds) that works like how directly it has to face you to see you, so the cone's width comes from that number and its length from the Vision Radius. The values are each Twisted's base stats. Cards that change them (Deaf Ears, Nearsighted and so on) are applied by the server and aren't reflected here." },
             { t = "dropdown", text = "Style", get = function() return TV.Style end, options = function() return STYLES end, set = function(o) TV.Style = o; refreshPage() end },
             { t = "dropdown", text = "Shape", get = function() return TV.Shape end, options = function() return SHAPES end, set = function(o) TV.Shape = o; refreshPage() end },
             { t = "slider", text = "Outline Thickness", min = 0.1, max = 1.5, dec = 2, get = function() return TV.Thickness end, set = function(v) TV.Thickness = v end } }
@@ -6926,12 +6991,13 @@ Features.twistedvis = (function()
                 default = function() return DEFAULT_COLORS[key] end }
             if key == "LineOfSight" then
                 rc[#rc + 1] = { t = "toggle", text = "Fill In Line Of Sight Cone", get = function() return TV.FillCone end, set = function(v) TV.FillCone = v end }
+                rc[#rc + 1] = { t = "toggle", text = "Hide While That Twisted Is Chasing Me", get = function() return TV.HideLosChased end, set = function(v) TV.HideLosChased = v end }
                 rc[#rc + 1] = { t = "dropdown", text = "Line Of Sight Alert", get = function() return TV.AlertMode end, options = function() return ALERT_MODES end, set = function(o) TV.AlertMode = o; refreshPage() end }
                 rc[#rc + 1] = { t = "color", text = "Line Of Sight Alert Color", rainbow = false, get = function() return TV.AlertColor end, set = function(v) TV.AlertColor = v end, default = function() return C(255, 0, 0) end }
                 rc[#rc + 1] = { t = "text", text = "Line Of Sight Alert turns that Twisted's cone to the alert color while you are standing in it. The second choice only does it for a Twisted that is also chasing you (its Chasing flag is on and its ChasingValue is you). \"In it\" means within its Vision Radius and in front of it by its Line Of Sight number; walls aren't checked, so it can go red when something is in the way." }
             end
         end
-        rc[#rc + 1] = { t = "slider", text = "Transparency (Filled)", min = 0.3, max = 0.95, dec = 2, get = function() return TV.Transparency end, set = function(v) TV.Transparency = v end }
+        rc[#rc + 1] = { t = "slider", text = "Transparency", min = 0, max = 0.95, dec = 2, get = function() return TV.Transparency end, set = function(v) TV.Transparency = v end }
         rc[#rc + 1] = { t = "toggle", text = "Show Through Walls", get = function() return TV.ThroughWalls end, set = function(v) TV.ThroughWalls = v end }
         rc[#rc + 1] = { t = "toggle", text = "Include Twisted Dessa", get = function() return TV.IncludeDessa end, set = function(v) TV.IncludeDessa = v end }
         secs[#secs + 1] = { title = "Radius Visualizers", controls = rc }
@@ -6954,7 +7020,7 @@ Features.twistedvis = (function()
         local r = {}
         for k, cfg in pairs(TV.Radii) do r[k] = { On = cfg.On, Color = hexOf(cfg.Color) } end
         local c = TV.Chase
-        return { Radii = r, Shape = TV.Shape, Style = TV.Style, Thickness = TV.Thickness, FillCone = TV.FillCone, AlertMode = TV.AlertMode, AlertColor = hexOf(TV.AlertColor), Transparency = TV.Transparency, ThroughWalls = TV.ThroughWalls, IncludeDessa = TV.IncludeDessa,
+        return { Radii = r, Shape = TV.Shape, Style = TV.Style, Thickness = TV.Thickness, FillCone = TV.FillCone, HideLosChased = TV.HideLosChased, AlertMode = TV.AlertMode, AlertColor = hexOf(TV.AlertColor), Transparency = TV.Transparency, ThroughWalls = TV.ThroughWalls, IncludeDessa = TV.IncludeDessa,
             Chase = { Mode = c.Mode, Style = c.Style, MatchType = c.MatchType, HideOnScreen = c.HideOnScreen, IncludeDessa = c.IncludeDessa } }
     end
     local function apply(d)
@@ -6972,9 +7038,10 @@ Features.twistedvis = (function()
         if table.find(STYLES, d.Style) then TV.Style = d.Style end
         if type(d.Thickness) == "number" then TV.Thickness = math.clamp(d.Thickness, 0.1, 1.5) end
         if type(d.FillCone) == "boolean" then TV.FillCone = d.FillCone end
+        if type(d.HideLosChased) == "boolean" then TV.HideLosChased = d.HideLosChased end
         if table.find(ALERT_MODES, d.AlertMode) then TV.AlertMode = d.AlertMode end
         TV.AlertColor = colorOf(d.AlertColor) or TV.AlertColor
-        if type(d.Transparency) == "number" then TV.Transparency = math.clamp(d.Transparency, 0.3, 0.95) end
+        if type(d.Transparency) == "number" then TV.Transparency = math.clamp(d.Transparency, 0, 0.95) end
         if type(d.ThroughWalls) == "boolean" then TV.ThroughWalls = d.ThroughWalls end
         if type(d.IncludeDessa) == "boolean" then TV.IncludeDessa = d.IncludeDessa end
         local c, s = TV.Chase, d.Chase
@@ -6990,6 +7057,7 @@ Features.twistedvis = (function()
         for m in pairs(live) do dropModel(m) end
         for m in pairs(arrows) do dropArrow(m) end
         if holder then killAd(holder) end
+        if partHolder then killAd(partHolder) end
     end
     return { serialize = serialize, apply = apply, build = build, unload = unload }
 end)()
@@ -12731,6 +12799,7 @@ local ESP_GROUPS = {
     ["Twisted Blot's Hands"] = { g = "Hazards", r = "Blot's Hands" },
     ["Twisted Razzle & Dazzle's Vines"] = { g = "Hazards", r = "Razzle's Vines" },   -- the full name is 156px wide in some skins, the rail text area is 148px
     ["Ichor Puddles"] = { g = "Hazards" },
+    ["Twisted Astro's Hallucinations"] = { g = "Hazards", r = "Hallucinations" },   -- the full name is too wide for the rail
 }
 local SKILL_GROUPS = {
     ["More Skill Checks"] = { g = "Basics", t = "Main" }, ["Live Values"] = { g = "Basics" },
