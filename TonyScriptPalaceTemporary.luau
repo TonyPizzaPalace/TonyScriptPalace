@@ -4897,11 +4897,11 @@ end
 --#region ui-core
 -- UI core
 UI = { tabs = {}, cats = {}, current = "esp", curCat = "gameplay", catSel = {}, visible = not S.startHidden, sel = {} }   -- sel[tab id] = key of the section picked in that tab. cats = the top tabs, tabs = the sub-tabs listed down the side (tab.cat says which top tab they belong to), catSel[cat id] = the sub-tab last open in that top tab
-T                                   -- active style tokens = nil
-gui, Win, Overlay, Content, StatusLbl, Orb, Grip, UIScaleObj, Host, Rail, PinPane = nil
+T = nil -- active style tokens
+gui = nil
 guiConns, popup, popupClose = {}, nil, nil
 activeDrag, listening = nil, nil
-buildGui, renderPage, applyLayout, toast, Destroy = nil
+buildGui = nil
 builders = {}
 liveList = {}   -- functions that refresh live text on the current page (5x per second)
 
@@ -6073,7 +6073,7 @@ end
 
 -- LAYOUT: every tab is a "section rail" (left) + one section at a time (middle) + an optional pinned pane (right, wide windows only).
 -- Nothing collapses and nothing needs a long scroll: pick a section in the rail and its controls fill the page.
-makePane, clearGui, loadSections   -- used by the skins, the library adapter and buildGui = nil
+makePane = nil -- used by the skins, the library adapter and buildGui
 do
 RAIL_W, PIN_W, PIN_MIN = 176, 300, 380                  -- rail width, pinned pane width, minimum width kept for the middle
 SIDE_W = { dandy = 200, aero = 190, xmb = 190, xp = 190 }   -- how much of the window the skin's own tab column takes
@@ -6333,7 +6333,7 @@ Auto.onChaseQuit = function(msg) toast(msg, "info") end
 -- EXTERNAL LIBRARY (optional, loaded safely)
 --   Dandy's World API Library : live game info (floor, machines, players alive...) for the World tab. Loads in the background.
 ----------------------------------------------------------------------
-fetchLib   -- download + run a library, returns (lib) or (nil, reason) = nil
+fetchLib = nil -- download + run a library, returns (lib) or (nil, reason)
 do
 loadStr = loadstring or env.loadstring
 
