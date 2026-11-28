@@ -3,7 +3,7 @@
 
 print("[TonyScriptPalace] Starting load...")
 
-local function reportError(msg, tb)
+function reportError(msg, tb)
     local full = tostring(msg) .. "\n" .. tostring(tb or "")
     warn("[TonyScriptPalace] ERROR:\n" .. full)
     pcall(function()
@@ -15,7 +15,7 @@ local function reportError(msg, tb)
     end)
 end
 
-local ok, err = xpcall(function()
+ok, err = xpcall(function()
 print("[TonyScriptPalace] Inside protected block, original script starting...")
 --#region header
 --[[
@@ -53,84 +53,84 @@ print("[TonyScriptPalace] Inside protected block, original script starting...")
     Write every label in Proper Case. The Aero style lowercases it for you.
 ]]
 
-local env = (getgenv and getgenv()) or _G
+env = (getgenv and getgenv()) or _G
 if env.TonyScriptPalace and env.TonyScriptPalace.Destroy then pcall(env.TonyScriptPalace.Destroy) end
 
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UIS              = game:GetService("UserInputService")
-local TweenService     = game:GetService("TweenService")
-local HttpService      = game:GetService("HttpService")
-local CoreGui          = game:GetService("CoreGui")
-local Workspace        = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LP               = Players.LocalPlayer
+Players          = game:GetService("Players")
+RunService       = game:GetService("RunService")
+UIS              = game:GetService("UserInputService")
+TweenService     = game:GetService("TweenService")
+HttpService      = game:GetService("HttpService")
+CoreGui          = game:GetService("CoreGui")
+Workspace        = game:GetService("Workspace")
+ReplicatedStorage = game:GetService("ReplicatedStorage")
+LP               = Players.LocalPlayer
 
-local alive = true
-local conns = {}
-local function connect(sig, fn) local c = sig:Connect(fn); conns[#conns + 1] = c; return c end
-local function try(f, ...) local ok, a = pcall(f, ...); if ok then return a end; return nil end
-local function guiParent() return (gethui and try(gethui)) or CoreGui end
+alive = true
+conns = {}
+function connect(sig, fn) local c = sig:Connect(fn); conns[#conns + 1] = c; return c end
+function try(f, ...) local ok, a = pcall(f, ...); if ok then return a end; return nil end
+function guiParent() return (gethui and try(gethui)) or CoreGui end
 
 --#endregion header
 --#region filesystem
 -- File system
-local ROOT_DIR   = "TonyScriptPalace"
-local CFG_DIR    = ROOT_DIR .. "/Configs"
-local SETTINGS_F = ROOT_DIR .. "/settings.json"
+ROOT_DIR   = "TonyScriptPalace"
+CFG_DIR    = ROOT_DIR .. "/Configs"
+SETTINGS_F = ROOT_DIR .. "/settings.json"
 
-local function fileExists(p) return isfile and try(isfile, p) or false end
-local function folderExists(p) return isfolder and try(isfolder, p) or false end
-local function makeDir(p) if makefolder and not folderExists(p) then pcall(makefolder, p) end end
-local function readFile(p) return readfile and try(readfile, p) or nil end
-local function writeFile(p, c) if writefile then return (pcall(writefile, p, c)) end; return false end
-local function listDir(p) return listfiles and try(listfiles, p) or {} end
-local function deleteFile(p) if delfile then pcall(delfile, p) end end
-local function baseName(p) p = tostring(p):gsub("\\", "/"); return p:match("([^/]+)$") or p end
-local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
-local function jsonEncode(t) local ok, r = pcall(HttpService.JSONEncode, HttpService, t); return ok and r or nil end
-local function jsonDecode(s) local ok, r = pcall(HttpService.JSONDecode, HttpService, s); return ok and r or nil end
+function fileExists(p) return isfile and try(isfile, p) or false end
+function folderExists(p) return isfolder and try(isfolder, p) or false end
+function makeDir(p) if makefolder and not folderExists(p) then pcall(makefolder, p) end end
+function readFile(p) return readfile and try(readfile, p) or nil end
+function writeFile(p, c) if writefile then return (pcall(writefile, p, c)) end; return false end
+function listDir(p) return listfiles and try(listfiles, p) or {} end
+function deleteFile(p) if delfile then pcall(delfile, p) end end
+function baseName(p) p = tostring(p):gsub("\\", "/"); return p:match("([^/]+)$") or p end
+function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+function jsonEncode(t) local ok, r = pcall(HttpService.JSONEncode, HttpService, t); return ok and r or nil end
+function jsonDecode(s) local ok, r = pcall(HttpService.JSONDecode, HttpService, s); return ok and r or nil end
 makeDir(ROOT_DIR); makeDir(CFG_DIR)
 
 --#endregion filesystem
 --#region colors
 -- Color helpers + presets
-local C = Color3.fromRGB
-local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
-local RAINBOW = "Rainbow"
+C = Color3.fromRGB
+WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
+RAINBOW = "Rainbow"
 -- animated "colors": Rainbow cycles every hue, Halloween swaps orange and purple, Christmas swaps red and green
-local COLOR_MODES = { Rainbow = true, Halloween = true, Christmas = true }
-local MODE_PAIRS = { Halloween = { Color3.fromRGB(255, 128, 0), Color3.fromRGB(128, 0, 255) }, Christmas = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 255, 0) } }
+COLOR_MODES = { Rainbow = true, Halloween = true, Christmas = true }
+MODE_PAIRS = { Halloween = { Color3.fromRGB(255, 128, 0), Color3.fromRGB(128, 0, 255) }, Christmas = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 255, 0) } }
 
-local function hexOf(c)
+function hexOf(c)
     return string.format("#%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
 end
-local function colorOf(s)
+function colorOf(s)
     if type(s) ~= "string" then return nil end
     local h = s:match("^#?(%x%x%x%x%x%x)$")
     if not h then return nil end
     return C(tonumber(h:sub(1, 2), 16), tonumber(h:sub(3, 4), 16), tonumber(h:sub(5, 6), 16))
 end
-local function lum(c) return c.R * 0.299 + c.G * 0.587 + c.B * 0.114 end
-local function copyT(t) local o = {}; for k, v in pairs(t) do o[k] = v end; return o end
+function lum(c) return c.R * 0.299 + c.G * 0.587 + c.B * 0.114 end
+function copyT(t) local o = {}; for k, v in pairs(t) do o[k] = v end; return o end
 
-local AERO_KEYS = {
+AERO_KEYS = {
     { "top", "Background Top" }, { "mid", "Background Middle" }, { "bottom", "Background Bottom" },
     { "accent", "Accent (Buttons / Title)" }, { "text", "Text" }, { "panel", "Panels" },
 }
-local XMB_KEYS = {
+XMB_KEYS = {
     { "top", "Background Top" }, { "bottom", "Background Bottom" }, { "wave", "Wave Color" }, { "accent", "Highlight" },
 }
-local AERO_ORDER = { "Default", "Dark Mode Aero", "Aqua Green", "Sunset", "Bubblegum" }
-local AERO_PRESETS = {
+AERO_ORDER = { "Default", "Dark Mode Aero", "Aqua Green", "Sunset", "Bubblegum" }
+AERO_PRESETS = {
     ["Default"]        = { top = C(185, 235, 255), mid = C(110, 200, 245), bottom = C(120, 215, 160), accent = C(20, 130, 215),  text = C(20, 62, 108),   panel = C(255, 255, 255) },
     ["Dark Mode Aero"] = { top = C(34, 58, 102),   mid = C(20, 38, 76),    bottom = C(12, 64, 78),    accent = C(45, 165, 235),  text = C(222, 240, 255), panel = C(18, 34, 64) },
     ["Aqua Green"]     = { top = C(205, 255, 230), mid = C(125, 228, 175), bottom = C(70, 180, 140),  accent = C(30, 170, 105),  text = C(8, 70, 50),     panel = C(255, 255, 255) },
     ["Sunset"]         = { top = C(255, 232, 190), mid = C(255, 175, 135), bottom = C(235, 120, 160), accent = C(225, 95, 60),   text = C(100, 30, 45),   panel = C(255, 255, 255) },
     ["Bubblegum"]      = { top = C(255, 220, 242), mid = C(210, 178, 255), bottom = C(155, 205, 255), accent = C(190, 80, 210),  text = C(85, 35, 105),   panel = C(255, 255, 255) },
 }
-local XMB_ORDER = { "Classic Blue", "Midnight", "Emerald", "Sakura", "Graphite" }
-local XMB_PRESETS = {
+XMB_ORDER = { "Classic Blue", "Midnight", "Emerald", "Sakura", "Graphite" }
+XMB_PRESETS = {
     ["Classic Blue"] = { top = C(38, 98, 214),  bottom = C(5, 16, 64),  wave = C(255, 255, 255), accent = C(120, 200, 255) },
     ["Midnight"]     = { top = C(40, 36, 110),  bottom = C(4, 4, 22),   wave = C(150, 150, 255), accent = C(170, 150, 255) },
     ["Emerald"]      = { top = C(24, 150, 100), bottom = C(3, 42, 34),  wave = C(190, 255, 220), accent = C(130, 255, 190) },
@@ -138,11 +138,11 @@ local XMB_PRESETS = {
     ["Graphite"]     = { top = C(80, 84, 96),   bottom = C(10, 10, 14), wave = C(220, 225, 235), accent = C(210, 220, 240) },
 }
 
-local XP_KEYS = {
+XP_KEYS = {
     { "title", "Title Bar" }, { "face", "Window Face" }, { "accent", "Highlight" }, { "pane", "Side Pane" },
 }
-local XP_ORDER = { "Luna Blue", "Olive Green", "Silver", "Windows Classic" }
-local XP_PRESETS = {
+XP_ORDER = { "Luna Blue", "Olive Green", "Silver", "Windows Classic" }
+XP_PRESETS = {
     ["Luna Blue"]       = { title = C(0, 84, 227),    face = C(236, 233, 216), accent = C(49, 106, 197),  pane = C(123, 162, 231) },
     ["Olive Green"]     = { title = C(116, 138, 72),  face = C(236, 233, 216), accent = C(147, 160, 112), pane = C(190, 204, 150) },
     ["Silver"]          = { title = C(139, 137, 176), face = C(240, 240, 245), accent = C(124, 124, 148), pane = C(196, 196, 222) },
@@ -150,7 +150,7 @@ local XP_PRESETS = {
 }
 
 -- Dandy's World skin (default): dark striped panels, thick black outlines, yellow headers, orange sliders
-local DANDY = {}
+DANDY = {}
 DANDY.keys = {
     { "panel", "Panels" }, { "header", "Headers / Highlight" }, { "fill", "Slider Fill" },
     { "on", "ON Color" }, { "off", "OFF Color" },
@@ -173,11 +173,11 @@ DANDY.presets = {
 --#endregion colors
 --#region settings
 -- UI settings (persisted)
-local STYLE_LIST = { "dandy", "aero", "xmb", "xp" }   -- dandy = default
-local function validStyle(s) return table.find(STYLE_LIST, s) ~= nil end
-local function defaultWin() return { dandy = { w = 960, h = 600 }, aero = { w = 860, h = 560 }, xmb = { w = 940, h = 580 }, xp = { w = 860, h = 560 } } end
+STYLE_LIST = { "dandy", "aero", "xmb", "xp" }   -- dandy = default
+function validStyle(s) return table.find(STYLE_LIST, s) ~= nil end
+function defaultWin() return { dandy = { w = 960, h = 600 }, aero = { w = 860, h = 560 }, xmb = { w = 940, h = 580 }, xp = { w = 860, h = 560 } } end
 
-local S = {
+S = {
     style = "dandy", keybind = "RightShift", scale = 1, fullscreen = false, orb = true, startHidden = false,
     autoload = true, lastConfig = "", pos = nil, sounds = true, sfxVol = 1, win = defaultWin(),
     dandy = { preset = "Dandy's World", colors = copyT(DANDY.presets["Dandy's World"]) },
@@ -185,15 +185,15 @@ local S = {
     xmb = { preset = "Classic Blue", colors = copyT(XMB_PRESETS["Classic Blue"]), speed = 1, alpha = 0.8 },
     xp = { preset = "Luna Blue", colors = copyT(XP_PRESETS["Luna Blue"]) },
 }
-local dirty = false
+dirty = false
 
-local function packColors(t) local o = {}; for k, v in pairs(t) do o[k] = hexOf(v) end; return o end
-local function unpackColors(dst, src)
+function packColors(t) local o = {}; for k, v in pairs(t) do o[k] = hexOf(v) end; return o end
+function unpackColors(dst, src)
     if type(src) ~= "table" then return end
     for k in pairs(dst) do local c = colorOf(src[k]); if c then dst[k] = c end end
 end
 
-local function saveSettings()
+function saveSettings()
     local s = jsonEncode({
         v = 2, style = S.style, keybind = S.keybind, scale = S.scale, fullscreen = S.fullscreen, orb = S.orb, startHidden = S.startHidden,
         autoload = S.autoload, lastConfig = S.lastConfig, pos = S.pos, win = S.win, sounds = S.sounds, sfxVol = S.sfxVol,
@@ -243,13 +243,13 @@ end
 --#endregion settings
 --#region esp
 -- ESP (ported from DandyESP, Highlight based)
-local ESP = {}
-local espDirty = true
-local animColors = { Rainbow = C(255, 0, 0), Halloween = MODE_PAIRS.Halloween[1], Christmas = MODE_PAIRS.Christmas[1] }   -- what each animated mode looks like right now
-local rainbowSet = {}                                   -- [Highlight] = mode name
-local rainbowSw = setmetatable({}, { __mode = "k" })    -- [swatch Frame] = mode name
+ESP = {}
+espDirty = true
+animColors = { Rainbow = C(255, 0, 0), Halloween = MODE_PAIRS.Halloween[1], Christmas = MODE_PAIRS.Christmas[1] }   -- what each animated mode looks like right now
+rainbowSet = {}                                   -- [Highlight] = mode name
+rainbowSw = setmetatable({}, { __mode = "k" })    -- [swatch Frame] = mode name
 
-local ITEM_GROUPS = {
+ITEM_GROUPS = {
     { C(255, 128, 0),   { "Stopwatch", "SkillCheckCandy" } },
     { "Halloween",      { "Pumpkin", "DandyCorn" } },                 -- orange and purple
     { "Christmas",      { "ChristmasCookie", "Ornament" } },          -- red and green
@@ -266,7 +266,7 @@ local ITEM_GROUPS = {
     { C(0, 0, 255),   { "StealthCandy", "SmokeBomb", "Cobweb" } },
 }
 
-local Cfg = {
+Cfg = {
     Enabled = false, Fill = true, FillTransparency = 0.75, OutlineTransparency = 0,
     AlwaysOnTop = true, UpdateRate = 0.2, MaxHighlights = 128,
     Categories = {
@@ -295,7 +295,7 @@ local Cfg = {
             -- Shop = also the items for sale in the elevator's shop. ShopMode: "Normal" (like the same item in a room), "Custom" (one color, ShopColor), "Tapes" (by Cost against your SurvivalPoints)
     },
 }
-local KNOWN_ITEMS = {}
+KNOWN_ITEMS = {}
 for _, g in ipairs(ITEM_GROUPS) do
     for _, n in ipairs(g[2]) do
         Cfg.Categories.Items.Colors[n] = g[1]
@@ -304,13 +304,13 @@ for _, g in ipairs(ITEM_GROUPS) do
 end
 table.sort(KNOWN_ITEMS)
 ESP.Config = Cfg
-local function deepcopy(t)
+function deepcopy(t)
     if type(t) ~= "table" then return t end
     local o = {}
     for k, v in pairs(t) do o[k] = deepcopy(v) end
     return o
 end
-local DEF = deepcopy(Cfg)   -- factory defaults (used by the "Default" / "Reset ESP Colors" buttons)
+DEF = deepcopy(Cfg)   -- factory defaults (used by the "Default" / "Reset ESP Colors" buttons)
 
 do
     local holder = Instance.new("Folder")
@@ -771,8 +771,8 @@ end
 --#endregion esp
 --#region config-system
 -- Config system (features register serialize/apply; ESP is the first)
-local STEP_SIZES = { Units = 1, Stars = 2.5, ["Half Stars"] = 1.25 }
-local Speed = {
+STEP_SIZES = { Units = 1, Stars = 2.5, ["Half Stars"] = 1.25 }
+Speed = {
     Enabled = false, Mode = "Additive", Step = "Units", Floor = 0, Limit = 0, Cap = false, Auto = true,
     Add = { WalkAll = 0, WalkOdd = 0, WalkEven = 0, RunAll = 0, RunOdd = 0, RunEven = 0 },   -- speed units
     Mul = { WalkAll = 0, WalkOdd = 0, WalkEven = 0, RunAll = 0, RunOdd = 0, RunEven = 0 },   -- percent
@@ -784,11 +784,11 @@ local Speed = {
 -- AutoRun = hold sprint for you on treadmill machines, stopping at RunStop stamina and starting again at RunResume.
 -- Peak = the highest stamina ever seen (used as the slider maximum).
 -- StopMode/ResumeMode: "Number" uses RunStop/RunResume, "Fraction" uses StopFrac/ResumeFrac (like "3/4") of your maximum stamina.
-local Stam = { Infinite = false, ShowActual = false, Icon = true, AutoRun = false, RunStop = 20, RunResume = 100, Peak = 0,
+Stam = { Infinite = false, ShowActual = false, Icon = true, AutoRun = false, RunStop = 20, RunResume = 100, Peak = 0,
     StopMode = "Number", ResumeMode = "Number", StopFrac = "1/8", ResumeFrac = "1/2" }
-local STAM_MODES = { "Number", "Fraction" }
+STAM_MODES = { "Number", "Fraction" }
 -- "3/4", "1/2", "50%" or "0.75" -> 0..1 (nil if it cannot be read)
-local function stamParseFraction(txt)
+function stamParseFraction(txt)
     txt = tostring(txt or ""):gsub("%s+", "")
     local pct = txt:match("^(%d*%.?%d+)%%$")
     if pct then return math.clamp(tonumber(pct) / 100, 0, 1) end
@@ -802,20 +802,20 @@ local function stamParseFraction(txt)
     if dec then return math.clamp(dec, 0, 1) end
     return nil
 end
-local function stamThreshold(mode, number, maxStam, frac)
+function stamThreshold(mode, number, maxStam, frac)
     if mode == "Fraction" then return maxStam * (stamParseFraction(frac) or 0.5) end
     return number
 end
-local function stamModeOk(m) return m == "Number" or m == "Fraction" end
+function stamModeOk(m) return m == "Number" or m == "Fraction" end
 -- older configs stored "Max" / "Max/2" ... "Max/16"; those become fractions
-local function stamLoadMode(mode)
+function stamLoadMode(mode)
     if stamModeOk(mode) then return mode, nil end
     if mode == "Max" then return "Fraction", "1/1" end
     local d = tonumber(tostring(mode):match("^Max/(%d+)$"))
     if d and d > 0 then return "Fraction", "1/" .. d end
     return nil, nil
 end
-local Features = {}
+Features = {}
 do
     local function ser(v)
         if typeof(v) == "Color3" then return hexOf(v) end
@@ -889,9 +889,9 @@ do
 end
 
 
-local function cfgPath(n) return CFG_DIR .. "/" .. n .. ".json" end
-local function sanitize(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
-local function listConfigs()
+function cfgPath(n) return CFG_DIR .. "/" .. n .. ".json" end
+function sanitize(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
+function listConfigs()
     local out = {}
     for _, p in ipairs(listDir(CFG_DIR)) do
         local n = baseName(p)
@@ -900,13 +900,13 @@ local function listConfigs()
     table.sort(out, function(a, b) return a:lower() < b:lower() end)
     return out
 end
-local function saveConfig(name)
+function saveConfig(name)
     local data = { version = 1, features = {} }
     for k, f in pairs(Features) do data.features[k] = f.serialize() end
     local js = jsonEncode(data)
     return js and writeFile(cfgPath(name), js) or false
 end
-local function loadConfig(name)
+function loadConfig(name)
     local data = jsonDecode(readFile(cfgPath(name)) or "")
     if type(data) ~= "table" or type(data.features) ~= "table" then return false end
     for k, f in pairs(Features) do
@@ -924,7 +924,7 @@ end
 --   and multipliers are folded into the game's own SpeedModifier / RunSpeedModifier. All of that happens BEFORE
 --   the Speed tab's own adjustments, so the two systems stack instead of fighting.
 ----------------------------------------------------------------------
-local Fun = {
+Fun = {
     Enabled = false,
     When = "Always",                    -- Always | While Not Idle | While Chased
     Default = true, Circle = false, Treadmill = false,
@@ -955,22 +955,22 @@ local Fun = {
     Status = "Off",
     fx = {}, dazedUntil = 0,
 }
-local FUN_WHEN = { "Always", "While Not Idle", "While Chased" }
-local FUN_AUTO = { "Stat", "Manual" }
-local FUN_SPEED = { "Game", "Skill Check Speed", "Manual" }
-local FUN_REWARD_MODES = { "Skill Check Stat", "Flat", "Multiplier", "Energized" }
-local FUN_REWARD_STATS = { "Skill Check Value", "Skill Check Speed" }
-local FUN_PEN_MODES = { "Flat", "Multiplier", "Slow", "Kill" }
-local FUN_STACK = { "Off", "On", "Limit" }
-local FUN_COUNT = { "Chasing You", "On The Floor" }
-local FUN_SCALE = { "Multiplier", "Flat" }
-local FUN_SCALE_CHANCE = { "Flat", "Multiplier" }
-local FUN_TIERS = { "I", "II", "III", "Custom" }
-local FUN_SLOW_PCT = { I = 15, II = 25, III = 50 }              -- the game's Slow tiers
-local FUN_ENERGIZED_PCT = { I = 25, II = 50, III = 75 }         -- the game's Energized tiers
-local FUN_TIER_NUM = { I = 1, II = 2, III = 3 }
+FUN_WHEN = { "Always", "While Not Idle", "While Chased" }
+FUN_AUTO = { "Stat", "Manual" }
+FUN_SPEED = { "Game", "Skill Check Speed", "Manual" }
+FUN_REWARD_MODES = { "Skill Check Stat", "Flat", "Multiplier", "Energized" }
+FUN_REWARD_STATS = { "Skill Check Value", "Skill Check Speed" }
+FUN_PEN_MODES = { "Flat", "Multiplier", "Slow", "Kill" }
+FUN_STACK = { "Off", "On", "Limit" }
+FUN_COUNT = { "Chasing You", "On The Floor" }
+FUN_SCALE = { "Multiplier", "Flat" }
+FUN_SCALE_CHANCE = { "Flat", "Multiplier" }
+FUN_TIERS = { "I", "II", "III", "Custom" }
+FUN_SLOW_PCT = { I = 15, II = 25, III = 50 }              -- the game's Slow tiers
+FUN_ENERGIZED_PCT = { I = 25, II = 50, III = 75 }         -- the game's Energized tiers
+FUN_TIER_NUM = { I = 1, II = 2, III = 3 }
 
-local function funIn(list, v) for _, x in ipairs(list) do if x == v then return true end end; return false end
+function funIn(list, v) for _, x in ipairs(list) do if x == v then return true end end; return false end
 
 -- adds an effect to a stacking group ("reward", "penalty", "mag") and applies the stacking rule
 function Fun.add(group, e, dur)
@@ -1014,7 +1014,7 @@ function Fun.activeCount() local n = 0; local now = os.clock(); for _, e in ipai
 --#endregion fun-settings
 --#region movement-engine
 -- Movement engine (reads the player's Stats folder, writes Humanoid.WalkSpeed)
-local SP = { last = nil, learned = {}, peak = {}, flag = nil, lastTrust = nil, onFlagUI = nil }
+SP = { last = nil, learned = {}, peak = {}, flag = nil, lastTrust = nil, onFlagUI = nil }
 do
     local RS = game:GetService("ReplicatedStorage")
     local statsCache, statsPath = nil, ""
@@ -2407,7 +2407,7 @@ end
 -- All skill checks listen to one InputAction ("SkillCheckTap"); firing its Pressed
 -- signal is the same as pressing the key (no window focus, no latency).
 ----------------------------------------------------------------------
-local Auto = {
+Auto = {
     Default = false, Circle = false, Treadmill = false, Swimmy = false, Instant = false,
     InstantKinds = { default = true, circle = true, treadmill = true },   -- which machine types Instant Calibration Success answers; the others are played normally
     Snap = true,            -- nudge the marker/circle to the exact middle of gold before tapping
@@ -3557,17 +3557,17 @@ end
 -- (the main script is close to Luau's 200-locals limit).
 ----------------------------------------------------------------------
 Fun.Pur = (function()
-local P = {}
-local PathfindingService = game:GetService("PathfindingService")
-local getasset = getcustomasset or getsynasset
-local httpReq = request or http_request or (syn and syn.request) or (http and http.request)
+P = {}
+PathfindingService = game:GetService("PathfindingService")
+getasset = getcustomasset or getsynasset
+httpReq = request or http_request or (syn and syn.request) or (http and http.request)
 
-local DIR = ROOT_DIR .. "/Pursuer"
-local IMG_DIR, SND_DIR, CACHE_DIR = DIR .. "/Images", DIR .. "/Sounds", DIR .. "/Cache"
+DIR = ROOT_DIR .. "/Pursuer"
+IMG_DIR, SND_DIR, CACHE_DIR = DIR .. "/Images", DIR .. "/Sounds", DIR .. "/Cache"
 makeDir(DIR); makeDir(IMG_DIR); makeDir(SND_DIR); makeDir(CACHE_DIR)
 
 -- Settings
-local LISTS = {
+LISTS = {
     ImageMode = { "Static", "Sprite Sheet", "Frame List" },
     Billboard = { "Y Only", "Full", "Off" },
     WallMode  = { "Solid (Pathfinds)", "Through Walls" },
@@ -3582,7 +3582,7 @@ local LISTS = {
 }
 P.LISTS = LISTS
 
-local D = {
+D = {
     Enabled = false, Kill = true, HitScale = 1,
     ImageMode = "Static", ImageSrc = "", FrameList = "", Cols = 4, Rows = 4, FrameCount = 16, FPS = 12,
     Billboard = "Y Only", Pixelated = true, Width = 6, Height = 6, FeetOnGround = true, Hover = 3,
@@ -3606,10 +3606,10 @@ local D = {
     After = false, AfterRate = 0.07, AfterFade = 0.45, AfterStart = 0.5, AfterDashOnly = false,
 }
 P.Defaults = D
-local Cfg = copyT(D)
+Cfg = copyT(D)
 P.Cfg = Cfg
 
-local RANGES = {
+RANGES = {
     PanicPercent = { 0, 500 }, PanicFlat = { 0, 100 }, PanicSet = { 1, 200 }, SuppressPercent = { 0, 100 }, SuppressFlat = { 0, 200 },
     DecodeFlat = { 0, 100 }, DecodePercent = { 0, 100 }, DecodeSet = { 0, 200 },
     HitScale = { 0.2, 3 }, Cols = { 1, 32 }, Rows = { 1, 32 }, FrameCount = { 1, 1024 }, FPS = { 1, 60 },
@@ -3623,7 +3623,7 @@ local RANGES = {
     AfterRate = { 0.02, 0.5 }, AfterFade = { 0.1, 2 }, AfterStart = { 0.05, 1 },
 }
 P.RANGES = RANGES
-local TEXTKEYS = { "ImageSrc", "FrameList", "MusicSrc", "SpawnSrc", "DeathSrc", "DashWarnSrc", "DashStartSrc", "DashLoopSrc" }
+TEXTKEYS = { "ImageSrc", "FrameList", "MusicSrc", "SpawnSrc", "DeathSrc", "DashWarnSrc", "DashStartSrc", "DashLoopSrc" }
 
 function P.sanitize()
     for k, r in pairs(RANGES) do
@@ -3653,16 +3653,16 @@ Features.pursuer = {
 }
 
 -- Asset sources (rbxassetid / link / file in TonyScriptPalace/Pursuer/Images or /Sounds)
-local IMG_EXT = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
-local SND_EXT = { mp3 = true, ogg = true, wav = true, flac = true }
-local memo = {}
+IMG_EXT = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
+SND_EXT = { mp3 = true, ogg = true, wav = true, flac = true }
+memo = {}
 
-local function hashS(s)
+function hashS(s)
     local h = 5381
     for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
     return string.format("%08x%x", h, #s)
 end
-local function normalizeUrl(u)
+function normalizeUrl(u)
     u = trim(u)
     local id = u:match("drive%.google%.com/file/d/([%w_%-]+)") or u:match("drive%.google%.com/open%?id=([%w_%-]+)")
     if id then return "https://drive.google.com/uc?export=download&id=" .. id end
@@ -3674,7 +3674,7 @@ local function normalizeUrl(u)
     end
     return u
 end
-local function sniff(b, kind)
+function sniff(b, kind)
     if kind == "img" then
         if b:sub(1, 4) == "\137PNG" then return "png" end
         if b:sub(1, 3) == "\255\216\255" then return "jpg" end
@@ -3693,11 +3693,11 @@ local function sniff(b, kind)
     if b1 == 0xFF and b2 and bit32.band(b2, 0xE0) == 0xE0 then return "mp3" end
     return nil
 end
-local function isHtml(b)
+function isHtml(b)
     local h = b:sub(1, 300):lower()
     return h:find("<!doctype", 1, true) ~= nil or h:find("<html", 1, true) ~= nil
 end
-local function fetchBody(url)
+function fetchBody(url)
     if not httpReq then return nil, "This executor has no request()." end
     local ok, res = pcall(httpReq, { Url = url, Method = "GET", Headers = { ["User-Agent"] = "Mozilla/5.0" } })
     if not ok then return nil, "Request failed: " .. tostring(res) end
@@ -3706,13 +3706,13 @@ local function fetchBody(url)
     if code >= 400 then return nil, "Server answered HTTP " .. code .. " (is the link public?)" end
     return res.Body or "", nil
 end
-local function cachedFile(key)
+function cachedFile(key)
     for _, e in ipairs({ "png", "jpg", "webp", "bmp", "mp3", "ogg", "wav", "flac" }) do
         local p = CACHE_DIR .. "/" .. key .. "." .. e
         if fileExists(p) then return p end
     end
 end
-local function findFile(kind, name)
+function findFile(kind, name)
     name = tostring(name):gsub("\\", "/")
     if fileExists(name) then return name end
     local dir = (kind == "img") and IMG_DIR or SND_DIR
@@ -3736,7 +3736,7 @@ function P.listFiles(kind)
 end
 
 -- cb(asset) or cb(nil, errorMessage). Results are remembered, so a source is only fetched once.
-local function resolve(kind, src, cb)
+function resolve(kind, src, cb)
     src = trim(src or "")
     if src == "" then return cb(nil, "empty") end
     local mk = kind .. "|" .. src
@@ -3775,7 +3775,7 @@ end
 P.resolve = resolve
 
 -- Image (single picture, sprite sheet or list of frames)
-local img = { key = nil, tok = 0, list = {}, err = nil, busy = false }
+img = { key = nil, tok = 0, list = {}, err = nil, busy = false }
 function P.imageState()
     local key = Cfg.ImageMode .. "|" .. Cfg.ImageSrc .. "|" .. Cfg.FrameList
     if key ~= img.key then
@@ -3821,8 +3821,8 @@ function P.reload()
     img.key = nil
 end
 
-local tintKey, tintVal = nil, WHITE
-local function tint()
+tintKey, tintVal = nil, WHITE
+function tint()
     if tintKey ~= Cfg.Tint then tintKey = Cfg.Tint; tintVal = colorOf(Cfg.Tint) or WHITE end
     return tintVal
 end
@@ -3876,7 +3876,7 @@ end
 
 -- State
 -- phase: off | waiting | flash | chase | dead | fading | gone
-local E = {
+E = {
     phase = "off", alpha = 0, pos = Vector3.zero, prev = Vector3.zero, face = Vector3.new(0, 0, 1),
     t0 = 0, spawnedFloor = -1, forced = false, dist = 0, speedNow = 0, dash = "idle", dashT = 0, dashDist = 0, dashDir = Vector3.zero,
     nextDash = 0, shake = 0, afterT = 0, nAfter = 0, timer = 120, timerOn = false, deadAt = 0,
@@ -3884,34 +3884,34 @@ local E = {
     why = "Off", hudUntil = 0, hudTxt = nil,
 }
 P.E = E
-local F = { id = 0, floor = nil, active = nil, sawOpen = false, closed = false, joinedMid = false, t0 = 0, open = false }
+F = { id = 0, floor = nil, active = nil, sawOpen = false, closed = false, joinedMid = false, t0 = 0, open = false }
 P.F = F
 
-local rp = RaycastParams.new()
+rp = RaycastParams.new()
 rp.FilterType = Enum.RaycastFilterType.Exclude
 rp.IgnoreWater = true
 pcall(function() rp.RespectCanCollide = true end)
 
-local function infoVal(name)
+function infoVal(name)
     local i = Workspace:FindFirstChild("Info")
     local v = i and i:FindFirstChild(name)
     if v and v:IsA("ValueBase") then return v.Value end
 end
-local function me()
+function me()
     local ch = LP.Character
     local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
     local hum = ch and ch:FindFirstChildOfClass("Humanoid")
     if not (ch and hrp and hum) then return nil end
     return ch, hrp, hum, ch:FindFirstChild("Stats"), hrp.Position.Y - hrp.Size.Y / 2 - hum.HipHeight
 end
-local function suppressed()
+function suppressed()
     local i = Workspace:FindFirstChild("Info")
     local cm = i and i:FindFirstChild("CardModifiers")
     return cm ~= nil and cm:FindFirstChild("MonsterPanicReduction") ~= nil    -- the Suppression card
 end
 -- speed in panic mode. The Suppression card can lower the boost: by a flat amount (in the boost's own unit) or by a percentage of it.
-local function panicOn() return Cfg.PanicMode ~= "Off" and infoVal("Panic") == true end
-local function panicAmount(base)
+function panicOn() return Cfg.PanicMode ~= "Off" and infoVal("Panic") == true end
+function panicAmount(base)
     if suppressed() then
         if Cfg.SuppressMode == "Lower By Flat Amount" then return math.max(base - Cfg.SuppressFlat, 0)
         elseif Cfg.SuppressMode == "Lower By Percent" then return base * (1 - Cfg.SuppressPercent / 100) end
@@ -3931,14 +3931,14 @@ function P.panicAdjust(spd, dash)
     return spd
 end
 
-local function ensureFolder()
+function ensureFolder()
     if not E.folder then
         E.folder = Instance.new("Folder"); E.folder.Name = "TSP_Pursuer"
     end
     local want = Workspace.CurrentCamera or Workspace
     if E.folder.Parent ~= want then E.folder.Parent = want end
 end
-local function refreshFilter()
+function refreshFilter()
     local list = { E.folder }
     for _, n in ipairs({ "InGamePlayers", "Players" }) do
         local f = Workspace:FindFirstChild(n)
@@ -3958,7 +3958,7 @@ local function refreshFilter()
 end
 
 -- Sounds
-local function playOnce(kind, src, vol)
+function playOnce(kind, src, vol)
     resolve("snd", src, function(a)
         if not a or not alive or not E.folder then return end
         local s = Instance.new("Sound")
@@ -3968,24 +3968,24 @@ local function playOnce(kind, src, vol)
         task.delay(30, function() if s.Parent then s:Destroy() end end)
     end)
 end
-local function stopMusic()
+function stopMusic()
     if E.music then pcall(function() E.music.sound:Destroy() end); E.music = nil end
 end
 
 -- Dash sounds: "warn" (while it shakes), "start" (once, when the lunge begins) and "loop" (for as long as it is dashing).
 -- Each one has a token, so a sound that is still being fetched when it is no longer wanted is thrown away instead of played late.
 E.dSnd, E.dTok, E.dPend, E.dErr, E.dashPrev = {}, {}, {}, {}, "idle"
-local function stopDashSound(slot)
+function stopDashSound(slot)
     E.dTok[slot] = (E.dTok[slot] or 0) + 1
     E.dPend[slot] = nil
     local s = E.dSnd[slot]
     if s then pcall(function() s:Destroy() end); E.dSnd[slot] = nil end
 end
-local function stopDashSounds()
+function stopDashSounds()
     for _, k in ipairs({ "warn", "start", "loop" }) do stopDashSound(k) end
     E.dashPrev = "idle"
 end
-local function playDashSound(slot, src, vol, looped)
+function playDashSound(slot, src, vol, looped)
     if trim(src) == "" then return end
     stopDashSound(slot)
     local tok = E.dTok[slot]
@@ -4008,7 +4008,7 @@ local function playDashSound(slot, src, vol, looped)
     end)
 end
 -- runs every frame: starts and stops the three dash sounds to match what the dash is doing
-local function syncDashSounds()
+function syncDashSounds()
     local chasing = E.phase == "chase" and Cfg.Dash
     local st = chasing and E.dash or "idle"
     local prev = E.dashPrev
@@ -4032,7 +4032,7 @@ local function syncDashSounds()
         stopDashSound("loop")
     end
 end
-local function updateMusic()
+function updateMusic()
     local want = Cfg.Music and trim(Cfg.MusicSrc) ~= "" and E.body ~= nil and (E.phase == "flash" or E.phase == "chase" or E.phase == "fading")
     if not want then if E.music then stopMusic() end; return end
     local key = Cfg.MusicSrc .. "|" .. tostring(Cfg.Music3D)
@@ -4063,7 +4063,7 @@ local function updateMusic()
 end
 
 -- Body (an invisible part carrying the picture on a SurfaceGui, so walls hide it like any other object)
-local function makeBody()
+function makeBody()
     local part = Instance.new("Part")
     part.Name = "PursuerBody"; part.Anchored = true; part.CanCollide = false; part.CanTouch = false; part.CanQuery = false
     part.CastShadow = false; part.Transparency = 1; part.Size = Vector3.new(Cfg.Width, Cfg.Height, 0.05)
@@ -4080,22 +4080,22 @@ local function makeBody()
     part.Parent = E.folder
     return b
 end
-local function killBody()
+function killBody()
     stopMusic()
     stopDashSounds()
     if E.body then pcall(function() E.body.part:Destroy() end); E.body = nil end
 end
 
-local function bodyCenter()
+function bodyCenter()
     local h = Cfg.Height
     return Vector3.new(E.pos.X, E.pos.Y + (Cfg.FeetOnGround and h / 2 or Cfg.Hover), E.pos.Z)
 end
-local function emissiveOn()
+function emissiveOn()
     if Cfg.Emissive == "Always" then return true end
     return Cfg.Emissive == "During Blackouts" and infoVal("BlackOut") == true
 end
 
-local function updateBody(t)
+function updateBody(t)
     local b = E.body
     if not b then return end
     local w, h = Cfg.Width, Cfg.Height
@@ -4133,7 +4133,7 @@ local function updateBody(t)
     if glow then b.light.Color = tint(); b.light.Brightness = 2 * E.alpha; b.light.Range = math.max(w, h) * 3 + 8 end
 end
 
-local function afterimage()
+function afterimage()
     local b = E.body
     if not b or E.nAfter >= 24 then return end
     local c = b.part:Clone()
@@ -4161,7 +4161,7 @@ local function afterimage()
 end
 
 -- Floor tracking (the elevator opens, you walk out, it closes)
-local function elevatorOpen()
+function elevatorOpen()
     local el = Workspace:FindFirstChild("Elevators")
     if not el then return false end
     for _, e in ipairs(el:GetChildren()) do
@@ -4170,7 +4170,7 @@ local function elevatorOpen()
     end
     return false
 end
-local function trackFloor(t, active)
+function trackFloor(t, active)
     local fl = infoVal("Floor")
     local open = elevatorOpen()
     if F.floor ~= fl or (active and not F.active) then
@@ -4188,7 +4188,7 @@ local function trackFloor(t, active)
 end
 
 -- keeps the pursuer out of the elevator room (the game's own MonsterBlocker box)
-local function avoidElevator()
+function avoidElevator()
     local el = Workspace:FindFirstChild("Elevators")
     if not el then return end
     for _, e in ipairs(el:GetChildren()) do
@@ -4209,7 +4209,7 @@ end
 
 -- Movement
 -- speed while you are extracting (choosing a mode here replaces the pause)
-local function decodeAdjust(spd)
+function decodeAdjust(spd)
     if not E.decoding or spd <= 0 then return spd end      -- a pursuer that is standing still (stops near you) stays still
     local m = Cfg.DecodeSlow
     if m == "Slow By Flat Amount" then return math.max(spd - Cfg.DecodeFlat, 0)
@@ -4218,7 +4218,7 @@ local function decodeAdjust(spd)
     return spd
 end
 
-local function speedFor(d)
+function speedFor(d)
     local m, mode = 1, Cfg.SpeedMode
     local span = math.max(Cfg.FarDist - Cfg.NearDist, 0.1)
     local k = math.clamp((d - Cfg.NearDist) / span, 0, 1)
@@ -4230,10 +4230,10 @@ local function speedFor(d)
 end
 function P.currentSpeed() return E.speedNow end
 
-local function radius() return 1.2 end      -- collision body is small and fixed: the picture can be huge, but doorways are narrow
+function radius() return 1.2 end      -- collision body is small and fixed: the picture can be huge, but doorways are narrow
 
 -- moves along dir (flat unit) for dist studs, sliding along walls. Returns the movement and whether a wall stopped it.
-local function slideStep(dir, dist)
+function slideStep(dir, dist)
     local origin = Vector3.new(E.pos.X, E.pos.Y + 3, E.pos.Z)
     local reach = dist + radius()
     local hit = Workspace:Raycast(origin, dir * reach, rp)
@@ -4249,7 +4249,7 @@ local function slideStep(dir, dist)
     return slide * dist * 0.9, true
 end
 
-local function clearLine(hrp)
+function clearLine(hrp)
     local y = hrp.Position.Y
     local from = Vector3.new(E.pos.X, y, E.pos.Z)
     local to = hrp.Position
@@ -4263,7 +4263,7 @@ local function clearLine(hrp)
     return true
 end
 
-local function requestPath(goal)
+function requestPath(goal)
     if E.pathBusy then return end
     E.pathBusy = true
     E.pathGoal = goal
@@ -4287,7 +4287,7 @@ local function requestPath(goal)
         else E.path = nil end
     end)
 end
-local function pathDir(t, goal)
+function pathDir(t, goal)
     local stale = (E.path == nil and t - E.pathAt > 0.5) or (t - E.pathAt > 1.2)
     local moved = E.pathGoal and (goal - E.pathGoal).Magnitude > 6 and t - E.pathAt > 0.35
     if (stale or moved) and not E.pathBusy then requestPath(goal) end
@@ -4302,7 +4302,7 @@ local function pathDir(t, goal)
     return nil
 end
 
-local function updateY(dt, myFeet)
+function updateY(dt, myFeet)
     if Cfg.Vertical == "Fly Up And Down" then
         -- it rises and falls toward your height at its own speed (not a snap), only while it is actually moving
         if E.phase ~= "chase" or E.dash == "dashing" or E.speedNow <= 0.01 then return end
@@ -4322,7 +4322,7 @@ local function updateY(dt, myFeet)
     E.pos = Vector3.new(E.pos.X, E.pos.Y + math.clamp(ty - E.pos.Y, -maxd, maxd), E.pos.Z)
 end
 
-local function killMe(t, hum)
+function killMe(t, hum)
     if E.phase == "dead" then return end
     E.phase, E.deadAt = "dead", t
     E.speedNow = 0
@@ -4334,7 +4334,7 @@ local function killMe(t, hum)
     if Cfg.DeathSound and trim(Cfg.DeathSrc) ~= "" then playOnce("snd", Cfg.DeathSrc, Cfg.DeathVol) end
 end
 
-local function touching(hrp)
+function touching(hrp)
     local p, q = E.prev, E.pos
     local a, b, c = Vector2.new(p.X, p.Z), Vector2.new(q.X, q.Z), Vector2.new(hrp.Position.X, hrp.Position.Z)
     local ab = b - a
@@ -4346,7 +4346,7 @@ local function touching(hrp)
     return y >= bottom - 3 and y <= bottom + Cfg.Height + 1.5
 end
 
-local function chaseStep(dt, t, hrp, myFeet, paused)
+function chaseStep(dt, t, hrp, myFeet, paused)
     local tp = hrp.Position
     local flat = Vector3.new(tp.X - E.pos.X, 0, tp.Z - E.pos.Z)
     local dist = flat.Magnitude
@@ -4429,9 +4429,9 @@ end
 -- The game draws the eye and the little counter from a number on your player (ChaseCount). We add one to it while the
 -- pursuer is chasing, so the game's own UI shows and counts it exactly like a Twisted.
 ----------------------------------------------------------------------
-local SPOT_PATH = { ["Spotted"] = "Sounds.UI.Alerts.Spotted", ["Spotted 2"] = "Sounds.UI.Alerts.Spotted2" }
-local audioMod
-local function playSpotted()
+SPOT_PATH = { ["Spotted"] = "Sounds.UI.Alerts.Spotted", ["Spotted 2"] = "Sounds.UI.Alerts.Spotted2" }
+audioMod
+function playSpotted()
     local ok = pcall(function()
         audioMod = audioMod or require(game:GetService("ReplicatedStorage"):WaitForChild("SharedUtils", 2):WaitForChild("Audio", 2))
         audioMod:PlayOne(SPOT_PATH[Cfg.SpotVariant] or SPOT_PATH.Spotted)
@@ -4449,10 +4449,10 @@ local function playSpotted()
     end)
 end
 
-local countConn
-local function chaseAttr() return tonumber(LP:GetAttribute("ChaseCount")) or 0 end
-local function writeCount(v) E.lastSet = v; LP:SetAttribute("ChaseCount", v) end
-local function setCounted(want)
+countConn
+function chaseAttr() return tonumber(LP:GetAttribute("ChaseCount")) or 0 end
+function writeCount(v) E.lastSet = v; LP:SetAttribute("ChaseCount", v) end
+function setCounted(want)
     if want == (E.counted == true) then return end
     E.counted = want
     if want then
@@ -4495,7 +4495,7 @@ function P.despawn(instant)
     E.phase = "fading"
 end
 
-local function beginChase(t)
+function beginChase(t)
     E.phase, E.alpha = "chase", 1
     if Cfg.SpotSound then playSpotted() end      -- the "a Twisted has spotted you" sound
     E.nextDash = t + Cfg.DashCdMin + math.random() * (Cfg.DashCdMax - Cfg.DashCdMin)
@@ -4504,9 +4504,9 @@ local function beginChase(t)
 end
 
 -- Timer hud (like the Pizza Time bar)
-local hud
-local function hudDestroy() if hud then pcall(function() hud.gui:Destroy() end); hud = nil end end
-local function hudUpdate(show, text, frac, urgent)
+hud
+function hudDestroy() if hud then pcall(function() hud.gui:Destroy() end); hud = nil end end
+function hudUpdate(show, text, frac, urgent)
     if not show then if hud then hud.gui.Enabled = false end; return end
     if not hud then
         local g = Instance.new("ScreenGui")
@@ -4528,14 +4528,14 @@ local function hudUpdate(show, text, frac, urgent)
     hud.lab.TextColor3 = col; hud.bar.BackgroundColor3 = col
     if urgent then hud.root.Position = UDim2.new(0.5, math.random(-2, 2), 0, 14 + math.random(-2, 2)) else hud.root.Position = UDim2.new(0.5, 0, 0, 14) end
 end
-local function fmtTime(s)
+function fmtTime(s)
     s = math.max(0, math.ceil(s))
     return string.format("%d:%02d", math.floor(s / 60), s % 60)
 end
 
 -- Main loop
-local BIND = "TSP_Pursuer"
-local function step(dt)
+BIND = "TSP_Pursuer"
+function step(dt)
     if not alive then return end
     dt = math.min(dt, 0.1)
     local t = os.clock()
@@ -4662,11 +4662,11 @@ function P.active() return E.phase == "flash" or E.phase == "chase" or E.phase =
 P.say = function() end      -- the page sets this to the hub's toast
 
 -- Saved pursuers (TonyScriptPalace/Pursuer/Presets/<name>.json)
-local PRESET_DIR = DIR .. "/Presets"
+PRESET_DIR = DIR .. "/Presets"
 makeDir(PRESET_DIR)
 P.presetName = ""
-local function presetClean(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
-local function presetPath(n) return PRESET_DIR .. "/" .. presetClean(n) .. ".json" end
+function presetClean(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
+function presetPath(n) return PRESET_DIR .. "/" .. presetClean(n) .. ".json" end
 function P.presetClean(n) return presetClean(n) end
 function P.presetExists(n) n = presetClean(n); return n ~= "" and fileExists(presetPath(n)) end
 function P.listPresets()
@@ -4896,46 +4896,46 @@ end
 --#endregion ctrllock-engine
 --#region ui-core
 -- UI core
-local UI = { tabs = {}, cats = {}, current = "esp", curCat = "gameplay", catSel = {}, visible = not S.startHidden, sel = {} }   -- sel[tab id] = key of the section picked in that tab. cats = the top tabs, tabs = the sub-tabs listed down the side (tab.cat says which top tab they belong to), catSel[cat id] = the sub-tab last open in that top tab
-local T                                   -- active style tokens
-local gui, Win, Overlay, Content, StatusLbl, Orb, Grip, UIScaleObj, Host, Rail, PinPane
-local guiConns, popup, popupClose = {}, nil, nil
-local activeDrag, listening = nil, nil
-local buildGui, renderPage, applyLayout, toast, Destroy
-local builders = {}
-local liveList = {}   -- functions that refresh live text on the current page (5x per second)
+UI = { tabs = {}, cats = {}, current = "esp", curCat = "gameplay", catSel = {}, visible = not S.startHidden, sel = {} }   -- sel[tab id] = key of the section picked in that tab. cats = the top tabs, tabs = the sub-tabs listed down the side (tab.cat says which top tab they belong to), catSel[cat id] = the sub-tab last open in that top tab
+T                                   -- active style tokens
+gui, Win, Overlay, Content, StatusLbl, Orb, Grip, UIScaleObj, Host, Rail, PinPane
+guiConns, popup, popupClose = {}, nil, nil
+activeDrag, listening = nil, nil
+buildGui, renderPage, applyLayout, toast, Destroy
+builders = {}
+liveList = {}   -- functions that refresh live text on the current page (5x per second)
 
-local F_AERO = { reg = Enum.Font.SourceSans, semi = Enum.Font.SourceSansSemibold, bold = Enum.Font.SourceSansBold }
-local F_XMB  = { reg = Enum.Font.Gotham, semi = Enum.Font.GothamMedium, bold = Enum.Font.GothamBold }
-local F_DANDY = { reg = Enum.Font.SourceSansSemibold, semi = Enum.Font.FredokaOne, bold = Enum.Font.FredokaOne }
-local F_XP   = { reg = Enum.Font.Arial, semi = Enum.Font.Arial, bold = Enum.Font.ArialBold }   -- closest thing to Tahoma
-local AL, AC, AR = Enum.TextXAlignment.Left, Enum.TextXAlignment.Center, Enum.TextXAlignment.Right
+F_AERO = { reg = Enum.Font.SourceSans, semi = Enum.Font.SourceSansSemibold, bold = Enum.Font.SourceSansBold }
+F_XMB  = { reg = Enum.Font.Gotham, semi = Enum.Font.GothamMedium, bold = Enum.Font.GothamBold }
+F_DANDY = { reg = Enum.Font.SourceSansSemibold, semi = Enum.Font.FredokaOne, bold = Enum.Font.FredokaOne }
+F_XP   = { reg = Enum.Font.Arial, semi = Enum.Font.Arial, bold = Enum.Font.ArialBold }   -- closest thing to Tahoma
+AL, AC, AR = Enum.TextXAlignment.Left, Enum.TextXAlignment.Center, Enum.TextXAlignment.Right
 
-local function gconnect(sig, fn) local c = sig:Connect(fn); guiConns[#guiConns + 1] = c; return c end
-local function New(cls, props, parent)
+function gconnect(sig, fn) local c = sig:Connect(fn); guiConns[#guiConns + 1] = c; return c end
+function New(cls, props, parent)
     local o = Instance.new(cls)
     for k, v in pairs(props or {}) do o[k] = v end
     if parent then o.Parent = parent end
     return o
 end
-local function corner(o, r) return New("UICorner", { CornerRadius = UDim.new(0, r) }, o) end
-local function stroke(o, col, th, tr)
+function corner(o, r) return New("UICorner", { CornerRadius = UDim.new(0, r) }, o) end
+function stroke(o, col, th, tr)
     return New("UIStroke", { Color = col, Thickness = th or 1, Transparency = tr or 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, o)
 end
-local function grad(o, c0, c1, rot) return New("UIGradient", { Color = ColorSequence.new(c0, c1), Rotation = rot or 90 }, o) end
-local function tween(o, props, t)
+function grad(o, c0, c1, rot) return New("UIGradient", { Color = ColorSequence.new(c0, c1), Rotation = rot or 90 }, o) end
+function tween(o, props, t)
     TweenService:Create(o, TweenInfo.new(t or 0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
 end
-local function gloss(parent, radius, a0, a1)
+function gloss(parent, radius, a0, a1)
     local g = New("Frame", { Name = "Gloss", BackgroundColor3 = WHITE, BorderSizePixel = 0,
         Position = UDim2.new(0, 3, 0, 2), Size = UDim2.new(1, -6, 0.48, 0), ZIndex = 2 }, parent)
     corner(g, math.max(radius - 2, 2))
     New("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(a0 or 0.2, a1 or 0.88) }, g)
     return g
 end
-local function isPress(i) return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch end
+function isPress(i) return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch end
 
-local function makeTokens()
+function makeTokens()
     if S.style == "dandy" then
         local c = S.dandy.colors
         return { kind = "dandy", c = c, F = F_DANDY, dark = true, text = C(240, 240, 244), dim = C(196, 196, 204), size = 18, rowH = 40,
@@ -4956,11 +4956,11 @@ local function makeTokens()
     return { kind = "aero", c = c, F = F_AERO, dark = dark, text = c.text, dim = c.text:Lerp(c.top, 0.35), size = 16,
         rowH = 34, accent = c.accent, panelT = dark and 0.3 or 0.5, minW = 560, minH = 380 }
 end
-local function fieldBg() return T.dark and T.c.panel:Lerp(WHITE, 0.1) or WHITE end
-local function okCol() return (T.kind == "xmb" or T.dark) and C(130, 245, 165) or C(10, 110, 50) end
-local function errCol() return (T.kind == "xmb" or T.dark) and C(255, 140, 140) or C(170, 25, 25) end
+function fieldBg() return T.dark and T.c.panel:Lerp(WHITE, 0.1) or WHITE end
+function okCol() return (T.kind == "xmb" or T.dark) and C(130, 245, 165) or C(10, 110, 50) end
+function errCol() return (T.kind == "xmb" or T.dark) and C(255, 140, 140) or C(170, 25, 25) end
 
-local function aeroTheme(name)
+function aeroTheme(name)
     local a = T.accent
     if name == "blue" then return { top = a:Lerp(WHITE, 0.55), bot = a, stroke = a:Lerp(BLACK, 0.45), text = WHITE, st = 0.55 }
     elseif name == "green" then return { top = C(175, 240, 120), bot = C(35, 160, 50), stroke = C(15, 105, 30), text = WHITE, st = 0.55 }
@@ -4974,7 +4974,7 @@ local function aeroTheme(name)
 end
 
 -- Aero keeps everything lowercase
-local function lowerize(o)
+function lowerize(o)
     if o:IsA("TextLabel") or o:IsA("TextButton") then
         local busy = false
         local function f()
@@ -4989,7 +4989,7 @@ local function lowerize(o)
     end
 end
 
-local function closePopup()
+function closePopup()
     local cb = popupClose
     popupClose = nil
     if popup then popup:Destroy(); popup = nil end
@@ -4999,12 +4999,12 @@ end
 --#endregion ui-core
 --#region ui-sounds
 -- UI sounds (each skin has its own set; toggle + volume in Appearance)
-local sndHolder = Instance.new("Folder")
+sndHolder = Instance.new("Folder")
 sndHolder.Name = "TonyScriptPalaceSounds"
 sndHolder.Parent = guiParent()
 
 -- { id, volume, speed }
-local SOUND_SETS = {
+SOUND_SETS = {
     -- Dandy's World: the game's own UI sounds
     dandy = {
         hover  = { "rbxassetid://6895079853", 0.3, 1 },
@@ -5063,14 +5063,14 @@ local SOUND_SETS = {
         boot   = { "", 0.6, 1, "Windows XP Startup.wav" },
     },
 }
-local SND_FALLBACK = {  -- used only if a Dandy or Aero asset id fails to load
+SND_FALLBACK = {  -- used only if a Dandy or Aero asset id fails to load
     hover = "rbxasset://sounds/clickfast.wav", click = "rbxasset://sounds/button.wav",
     on = "rbxasset://sounds/electronicpingshort.wav", off = "rbxasset://sounds/electronicpingshort.wav",
     open = "rbxasset://sounds/snap.mp3", tick = "rbxasset://sounds/switch.wav",
     ok = "rbxasset://sounds/victory.wav", err = "rbxasset://sounds/bass.mp3",
     close = "rbxasset://sounds/clickfast.wav", option = "rbxasset://sounds/snap.mp3",
 }
-local uiSnd = { dandy = {}, aero = {}, xmb = {}, xp = {} }
+uiSnd = { dandy = {}, aero = {}, xmb = {}, xp = {} }
 for style, set in pairs(SOUND_SETS) do
     for k, d in pairs(set) do
         local snd = Instance.new("Sound")
@@ -5085,9 +5085,9 @@ for style, set in pairs(SOUND_SETS) do
         end
     end
 end
-local SOUND_ALIAS = { ng = "err", close = "click", option = "open" }  -- a skin without that sound uses this one
-local soundReady = { xmb = {}, xp = {} }  -- [style][sound name] = true once its file is loaded
-local function ui(name)
+SOUND_ALIAS = { ng = "err", close = "click", option = "open" }  -- a skin without that sound uses this one
+soundReady = { xmb = {}, xp = {} }  -- [style][sound name] = true once its file is loaded
+function ui(name)
     if not S.sounds or S.sfxVol <= 0 then return end
     local set = SOUND_SETS[S.style]
     if set and not set[name] then name = SOUND_ALIAS[name] or name end
@@ -5104,7 +5104,7 @@ local function ui(name)
 end
 
 -- play a sound as soon as its file has downloaded (used for the boot sounds)
-local function uiWhenReady(name)
+function uiWhenReady(name)
     local st = S.style
     if not soundReady[st] then return end
     task.spawn(function()
@@ -5116,9 +5116,9 @@ end
 
 -- download the XMB sound files once, cache them in workspace/TonyScriptPalace/Sounds,
 -- then point the XMB sounds at them. Needs an executor with request/HttpGet + writefile + getcustomasset.
-local SND_DIR = ROOT_DIR .. "/Sounds"
-local XMB_SOUND_URL = "https://file.garden/aRURJecPmmjLUziC/Sound%20Effects%20-%20XMB%20-%20PlayStation%203/"
-local XP_SOUND_URL  = "https://file.garden/aRURJecPmmjLUziC/Windows%20XP%20Sounds/"
+SND_DIR = ROOT_DIR .. "/Sounds"
+XMB_SOUND_URL = "https://file.garden/aRURJecPmmjLUziC/Sound%20Effects%20-%20XMB%20-%20PlayStation%203/"
+XP_SOUND_URL  = "https://file.garden/aRURJecPmmjLUziC/Windows%20XP%20Sounds/"
 task.spawn(function()
     local getAsset = env.getcustomasset or env.getsynasset
     if not (getAsset and writefile) then return end
@@ -5160,7 +5160,7 @@ end)
 --#endregion ui-sounds
 --#region widgets
 -- Widgets (shared by both skins, drawn from tokens)
-local function Label(parent, text, pos, size, o)
+function Label(parent, text, pos, size, o)
     o = o or {}
     return New("TextLabel", {
         BackgroundTransparency = 1, Text = text, Font = o.font or T.F.semi, TextSize = o.size or T.size,
@@ -5169,7 +5169,7 @@ local function Label(parent, text, pos, size, o)
     }, parent)
 end
 
-local function Button(parent, text, size, style, cb, o)
+function Button(parent, text, size, style, cb, o)
     o = o or {}
     local b, lb
     if T.kind == "dandy" then
@@ -5235,7 +5235,7 @@ local function Button(parent, text, size, style, cb, o)
     return b, lb
 end
 
-local function Input(parent, text, ph, commit, size)
+function Input(parent, text, ph, commit, size)
     local aero = T.kind == "aero"
     local xp = T.kind == "xp"
     local dandy = T.kind == "dandy"
@@ -5258,7 +5258,7 @@ local function Input(parent, text, ph, commit, size)
     return tb
 end
 
-local function ToggleW(holder, value, cb)
+function ToggleW(holder, value, cb)
     local obj = { value = value and true or false }
     local aero = T.kind == "aero"
     local g, knob, txt, chk1, chk2
@@ -5307,7 +5307,7 @@ local function ToggleW(holder, value, cb)
     return obj
 end
 
-local function Slider(parent, min, max, dec, init, cb, step, free)
+function Slider(parent, min, max, dec, init, cb, step, free)
     local aero = T.kind == "aero"
     local xp = T.kind == "xp"
     local dandy = T.kind == "dandy"
@@ -5402,7 +5402,7 @@ local function Slider(parent, min, max, dec, init, cb, step, free)
     return obj
 end
 
-local function openMenu(anchor, options, onPick)
+function openMenu(anchor, options, onPick)
     closePopup()
     ui("option")
     local sc = UIScaleObj.Scale
@@ -5446,7 +5446,7 @@ local function openMenu(anchor, options, onPick)
 end
 
 -- official highlight colors used in the game (name, r, g, b)
-local GAME_COLORS = {
+GAME_COLORS = {
     { "Astro Blue", 120, 200, 255 }, { "Brusha Purple", 153, 81, 137 }, { "Dessa Green", 0, 255, 38 }, { "Eclipse Blue", 150, 180, 220 }, { "Soulvester Blue", 129, 215, 180 },
     { "Vee Green", 100, 255, 97 }, { "Egg Radar Pink", 255, 192, 203 }, { "Festive Lights Yellow", 255, 215, 0 },
     { "Fishing Rod Blue", 61, 151, 220 }, { "Memory Locket Green", 168, 255, 160 }, { "Party Popper Pink", 255, 132, 203 },
@@ -5458,7 +5458,7 @@ local GAME_COLORS = {
     { "Default Black", 17, 17, 17 }, { "Default Gray", 160, 160, 160 }, { "Default White", 255, 255, 255 },
 }
 
-local function openColorPicker(c)
+function openColorPicker(c)
     closePopup()
     ui("option")
     local aero = T.kind == "aero"
@@ -5590,9 +5590,9 @@ end
 --#endregion widgets
 --#region row-builders
 -- Row builders (one per control type)
-local function padX() return (T.kind == "xmb" and 42) or (T.kind == "dandy" and 12) or 6 end
+function padX() return (T.kind == "xmb" and 42) or (T.kind == "dandy" and 12) or 6 end
 
-local function rowFor(parent, order, h)
+function rowFor(parent, order, h)
     local row = New("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0,
         Size = UDim2.new(1, 0, 0, h or T.rowH), LayoutOrder = order }, parent)
     local hintTxt = UI.curHint
@@ -5625,7 +5625,7 @@ local function rowFor(parent, order, h)
 end
 
 -- label on the left, a holder frame on the right. flex = scale width, otherwise fixed pixel width
-local function layoutRow(row, text, flex, fixedW)
+function layoutRow(row, text, flex, fixedW)
     local x = padX()
     local lab, holder
     local hgt = -8
@@ -5789,7 +5789,7 @@ builders.list = function(parent, c, order)
     end
 end
 
-local function warnCol() return (T.kind == "xmb" or T.dark) and C(255, 205, 90) or C(185, 105, 0) end
+function warnCol() return (T.kind == "xmb" or T.dark) and C(255, 205, 90) or C(185, 105, 0) end
 
 builders.readout = function(parent, c, order)
     local row = rowFor(parent, order)
@@ -6073,17 +6073,17 @@ end
 
 -- LAYOUT: every tab is a "section rail" (left) + one section at a time (middle) + an optional pinned pane (right, wide windows only).
 -- Nothing collapses and nothing needs a long scroll: pick a section in the rail and its controls fill the page.
-local makePane, clearGui, loadSections   -- used by the skins, the library adapter and buildGui
+makePane, clearGui, loadSections   -- used by the skins, the library adapter and buildGui
 do
-local RAIL_W, PIN_W, PIN_MIN = 176, 300, 380                  -- rail width, pinned pane width, minimum width kept for the middle
-local SIDE_W = { dandy = 200, aero = 190, xmb = 190, xp = 190 }   -- how much of the window the skin's own tab column takes
+RAIL_W, PIN_W, PIN_MIN = 176, 300, 380                  -- rail width, pinned pane width, minimum width kept for the middle
+SIDE_W = { dandy = 200, aero = 190, xmb = 190, xp = 190 }   -- how much of the window the skin's own tab column takes
 
-local function designW()
+function designW()
     local w = (Win and UIScaleObj) and (Win.AbsoluteSize.X / math.max(UIScaleObj.Scale, 0.1)) or 0
     if w < 200 then w = S.fullscreen and 1280 or (S.win[S.style] and S.win[S.style].w) or 900 end
     return w
 end
-local function canPin() return designW() - (SIDE_W[T.kind] or 190) >= RAIL_W + PIN_W + PIN_MIN end
+function canPin() return designW() - (SIDE_W[T.kind] or 190) >= RAIL_W + PIN_W + PIN_MIN end
 
 function clearGui(o) for _, ch in ipairs(o:GetChildren()) do if ch:IsA("GuiObject") then ch:Destroy() end end end
 
@@ -6115,7 +6115,7 @@ function makePane()
     end)
 end
 
-local function layoutPane(showRail, showPin)
+function layoutPane(showRail, showPin)
     local rw = showRail and RAIL_W or 0
     local pw = showPin and PIN_W or 0
     Rail.Visible = showRail
@@ -6126,7 +6126,7 @@ local function layoutPane(showRail, showPin)
     Content.Size = UDim2.new(1, -(rw + pw), 1, 0)
 end
 
-local function renderSection(parent, sec, order)
+function renderSection(parent, sec, order)
     local kind = T.kind
     local f = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order }, parent)
     if kind == "aero" then
@@ -6170,7 +6170,7 @@ function loadSections(tab)
     return secs
 end
 
-local function buildRail(navs, selKey, tabId)
+function buildRail(navs, selKey, tabId)
     clearGui(Rail)
     local lastGroup, order = nil, 0
     for _, sec in ipairs(navs) do
@@ -6223,7 +6223,7 @@ end
 
 end   -- layout internals
 
-local function refreshPage()
+function refreshPage()
     local y = Content and Content.CanvasPosition.Y or 0
     renderPage()
     task.defer(function() if Content and Content.Parent then Content.CanvasPosition = Vector2.new(0, y) end end)
@@ -6240,7 +6240,7 @@ function UI.catName(cat)
     return ""
 end
 
-local function setTab(id)
+function setTab(id)
     if UI.current == id then return end
     local tab
     for _, t in ipairs(UI.tabs) do if t.id == id then tab = t end end
@@ -6305,10 +6305,10 @@ function UI.applySide()
     if UI.sideTitle then UI.sideTitle.Text = UI.catName() end
 end
 
-local function statusDefault() return "Press " .. S.keybind .. " to hide or show the hub." end
+function statusDefault() return "Press " .. S.keybind .. " to hide or show the hub." end
 function UI.hintOn(msg) if StatusLbl then StatusLbl.Text = msg; StatusLbl.TextColor3 = T.text end end
 function UI.hintOff() if StatusLbl then StatusLbl.Text = statusDefault(); StatusLbl.TextColor3 = T.dim end end
-local statusToken = 0
+statusToken = 0
 function toast(msg, kind)
     statusToken += 1
     local tok = statusToken
@@ -6333,9 +6333,9 @@ Auto.onChaseQuit = function(msg) toast(msg, "info") end
 -- EXTERNAL LIBRARY (optional, loaded safely)
 --   Dandy's World API Library : live game info (floor, machines, players alive...) for the World tab. Loads in the background.
 ----------------------------------------------------------------------
-local fetchLib   -- download + run a library, returns (lib) or (nil, reason)
+fetchLib   -- download + run a library, returns (lib) or (nil, reason)
 do
-local loadStr = loadstring or env.loadstring
+loadStr = loadstring or env.loadstring
 
 function fetchLib(url)
     if not loadStr then return nil, "this executor has no loadstring" end
@@ -6350,8 +6350,8 @@ end
 
 end
 
-local API_URL = "https://raw.githubusercontent.com/did-i-leave-the-oven-on/Dandy-s-World-API-Library/refs/heads/main/Dandy's%20World%20API%20Library.lua"
-local DWAPI = { lib = env.TonyScriptPalaceAPI, state = "idle" }   -- the library can only be loaded once per session, so the table is kept in env
+API_URL = "https://raw.githubusercontent.com/did-i-leave-the-oven-on/Dandy-s-World-API-Library/refs/heads/main/Dandy's%20World%20API%20Library.lua"
+DWAPI = { lib = env.TonyScriptPalaceAPI, state = "idle" }   -- the library can only be loaded once per session, so the table is kept in env
 function DWAPI.load()
     if DWAPI.lib or DWAPI.state == "loading" then return end
     DWAPI.state = "loading"
@@ -6364,7 +6364,7 @@ function DWAPI.load()
         end
     end)
 end
-local function apiField(fn)   -- a safe readout for the World tab
+function apiField(fn)   -- a safe readout for the World tab
     return function()
         local api = DWAPI.lib
         if not api then
@@ -6381,10 +6381,10 @@ end
 --#endregion libs
 --#region page-esp
 -- Pages
-local ITEM_LABELS = { Gumball = "Gumballs", BonBon = "BonBon", ChristmasCookie = "ChristmasCookie", DandyCorn = "DandyCorn", DandyEasterEggs = "DandyEasterEggs", BallOfWax = "BallOfWax" }   -- internal name -> shown name (anything else gets spaces put in: AlarmClock -> Alarm Clock)
-local function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) end
+ITEM_LABELS = { Gumball = "Gumballs", BonBon = "BonBon", ChristmasCookie = "ChristmasCookie", DandyCorn = "DandyCorn", DandyEasterEggs = "DandyEasterEggs", BallOfWax = "BallOfWax" }   -- internal name -> shown name (anything else gets spaces put in: AlarmClock -> Alarm Clock)
+function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) end
 
-local function resetESPColors()
+function resetESPColors()
     local c, d = Cfg.Categories, DEF.Categories
     for _, k in ipairs({ "Players", "Twisteds", "Ichorlings", "GlitterGlue", "Tendrils", "BlotHands", "RazzleVines", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
     c.Elevator.FakeColor = d.Elevator.FakeColor
