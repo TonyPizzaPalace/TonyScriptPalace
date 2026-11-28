@@ -13256,7 +13256,7 @@ connect(UIS.InputBegan, function(i, gp)
         end
         return
     end
-    if gp or i.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    if i.UserInputType ~= Enum.UserInputType.Keyboard then return end -- ignore gp for keybind reliability
     if i.KeyCode.Name == S.keybind then
         UI.setVisible(not UI.visible)
     elseif UI.binds and UI.binds.onKey(i.KeyCode.Name) then
@@ -13306,10 +13306,12 @@ end
 
 print("[TonyScriptPalace] Calling buildGui()...")
 buildGui()
-print("[TonyScriptPalace] buildGui() returned")
+print("[TonyScriptPalace] buildGui() returned. UI.visible = " .. tostring(UI.visible) .. ", Win = " .. tostring(Win))
 DWAPI.load()
 if S.style == "xmb" or S.style == "xp" then uiWhenReady("boot") end
-toast("Tony Script Palace ready (Dandy's World only). Press " .. S.keybind .. " to hide or show.", "info")
+print("[TonyScriptPalace] Forcing GUI visible...")
+UI.setVisible(true)
+toast("Tony Script Palace ready. Press " .. S.keybind .. " to toggle (forced visible).", "info")
 
 --#endregion boot
 print("[TonyScriptPalace] Protected block finished without error")
