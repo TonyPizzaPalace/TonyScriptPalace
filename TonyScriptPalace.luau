@@ -260,7 +260,7 @@ local Cfg = {
         Elevator   = { Enabled = true, Fill = true, Color = C(0, 255, 0), Fake = true, FakeColor = C(255, 0, 0) },   -- the real elevator's ElevatorDoor, and optionally the fake elevators' doors
         RazzleVines = { Enabled = true, Fill = true, Color = C(255, 0, 0) },     -- Twisted Razzle & Dazzle's vines (the RazzleVine MeshParts in the room's FreeArea)
         BlotHands  = { Enabled = true, Fill = true, Color = C(255, 0, 0) },      -- Twisted Blot's hands (the Arm in each BlotHand_R / BlotHand_L)
-        IchorPuddles = { Enabled = true, Fill = true, Color = C(255, 0, 0), Tops = true, FinnDiff = false, FinnColor = C(0, 128, 255) },   -- everything in the room's Puddles folder except Twisted Barnaby. Tops = the Ichor_Puddle_Top models; FinnDiff/FinnColor = FinnIchorPuddle in its own color
+        IchorPuddles = { Enabled = true, Fill = true, Color = C(255, 0, 0), Tops = false, FinnDiff = false, FinnColor = C(0, 128, 255) },   -- everything in the room's Puddles folder except Twisted Barnaby. Tops = the Ichor_Puddle_Top models; FinnDiff/FinnColor = FinnIchorPuddle in its own color
         Generators = { Enabled = true, Fill = true, HideCompleted = false, Brusha = true, DuoOne = true, Colors = {
             Incomplete = C(255, 0, 0), InProgress = C(255, 255, 0), Completed = C(0, 255, 0), Connie = C(0, 255, 255), Brusha = C(128, 0, 255),
             DuoOne = C(255, 128, 0),      -- duo machine with only one player working on it
@@ -272,7 +272,7 @@ local Cfg = {
             ShowTwisted = true, TwistedColor = C(255, 0, 0) },
         Bookshelves = { Enabled = false, Fill = true, Color = C(128, 0, 255), Patterns = { "bookshel", "bookcase" } },
         Items      = { Enabled = true, Fill = true, PerItem = true, Color = C(255, 255, 255), Fallback = C(255, 255, 255), Colors = {}, Hidden = {},
-            Shop = false, ShopMode = "Normal", ShopColor = C(255, 215, 0), ShopAffordColor = C(0, 255, 0), ShopNoAffordColor = C(255, 0, 0), ShopAffordNormal = false, ShopAffordOnly = false },
+            Shop = true, ShopMode = "Tapes", ShopColor = C(255, 215, 0), ShopAffordColor = C(0, 255, 0), ShopNoAffordColor = C(255, 0, 0), ShopAffordNormal = false, ShopAffordOnly = false },
             -- Shop = also the items for sale in the elevator's shop. ShopMode: "Normal" (like the same item in a room), "Custom" (one color, ShopColor), "Tapes" (by Cost against your SurvivalPoints)
     },
 }
@@ -6529,16 +6529,18 @@ end
 Features.twistedvis = (function()
     local TV = {
         Radii = {
-            HearingRadius = { On = false, Color = C(255, 200, 0),   Label = "Hearing Radius" },
-            InstantRadius = { On = false, Color = C(255, 0, 0),     Label = "Instant Radius" },
-            KillRadius    = { On = false, Color = C(255, 0, 255),   Label = "Kill Radius" },
-            VisionRadius  = { On = false, Color = C(0, 170, 255),   Label = "Vision Radius" },
-            LineOfSight   = { On = false, Color = C(0, 255, 128),   Label = "Line Of Sight" },
+            HearingRadius = { On = false, Color = C(0, 255, 0),     Label = "Hearing Radius" },
+            InstantRadius = { On = false, Color = C(255, 128, 0),   Label = "Instant Radius" },
+            KillRadius    = { On = false, Color = C(255, 0, 0),     Label = "Kill Radius" },
+            VisionRadius  = { On = false, Color = C(255, 255, 0),   Label = "Vision Radius" },
+            LineOfSight   = { On = false, Color = C(255, 255, 255), Label = "Line Of Sight" },
         },
-        Transparency = 0.8, ThroughWalls = true, IncludeDessa = true,
-        Chase = { Mode = "Off", Style = "Default", MatchLethal = true, HideOnScreen = false, IncludeDessa = true },
+        Shape = "Flat", FillCone = false, AlertMode = "Off", AlertColor = C(255, 0, 0), Transparency = 0.75, ThroughWalls = false, IncludeDessa = true,
+        Chase = { Mode = "Off", Style = "Default", MatchType = true, HideOnScreen = false, IncludeDessa = true },
     }
-    local DEFAULT_COLORS = { HearingRadius = C(255, 200, 0), InstantRadius = C(255, 0, 0), KillRadius = C(255, 0, 255), VisionRadius = C(0, 170, 255), LineOfSight = C(0, 255, 128) }
+    local DEFAULT_COLORS = { HearingRadius = C(0, 255, 0), InstantRadius = C(255, 128, 0), KillRadius = C(255, 0, 0), VisionRadius = C(255, 255, 0), LineOfSight = C(255, 255, 255) }
+    local SHAPES = { "Flat", "Sphere" }
+    local ALERT_MODES = { "Off", "When I'm In It", "When I'm In It And It's Chasing Me" }
     local RADII_ORDER = { "HearingRadius", "VisionRadius", "InstantRadius", "KillRadius" }   -- biggest discs first so the small ones draw on top
     local CHASE_MODES = { "Off", "While Chased", "Always" }
     local CHASE_STYLES = { "Default", "Ranged", "Lethal" }
@@ -6566,6 +6568,10 @@ Features.twistedvis = (function()
     end
     local function chasesMe(m)    -- true: after me. false: after someone else. nil: it doesn't say
         local cv = m:FindFirstChild("ChasingValue")
+        if cv and cv:IsA("StringValue") then
+            if cv.Value == "" then return nil end
+            return cv.Value == LP.Name or cv.Value == LP.DisplayName
+        end
         local v = cv and cv:IsA("ObjectValue") and cv.Value or nil
         if not v then return nil end
         local ch = LP.Character
@@ -6611,7 +6617,7 @@ Features.twistedvis = (function()
     local function dropModel(m)
         local t = live[m]; if not t then return end
         for k, a in pairs(t) do
-            if k == "los" then for _, x in ipairs(a) do killAd(x) end else killAd(a) end
+            if k == "los" then for _, x in ipairs(a) do killAd(x) end elseif k ~= "losKind" then killAd(a) end
         end
         live[m] = nil
     end
@@ -6619,33 +6625,57 @@ Features.twistedvis = (function()
         for _, cfg in pairs(TV.Radii) do if cfg.On then return true end end
         return false
     end
-    local function look(a, cfg, z)
-        a.Color3 = cfg.Color; a.Transparency = TV.Transparency; a.AlwaysOnTop = TV.ThroughWalls; a.ZIndex = z
+    local function look(a, color, z)
+        a.Color3 = color; a.Transparency = TV.Transparency; a.AlwaysOnTop = TV.ThroughWalls; a.ZIndex = z
     end
     local ARC_STEPS = 8
     -- Line Of Sight is a number like 0.4, not a distance. It reads as how much a Twisted has to be facing you to see you (1 = dead ahead only, 0 = a half circle,
     -- -1 = all around), so it is drawn as a cone: half-angle acos(LineOfSight), as long as the Twisted's Vision Radius.
+    -- Outline: two edges and an arc along the floor. Filled: the same area filled in, flat on the floor.
+    local function clearCone(t)
+        if t.los then for _, x in ipairs(t.los) do killAd(x) end; t.los = nil; t.losKind = nil end
+    end
     local function drawCone(m, t, root, drop, cfg)
         local los, vr = stat(m, "LineOfSight"), stat(m, "VisionRadius")
-        local list = t.los
-        if not (los and vr and vr > 0 and los < 1) then
-            if list then for _, x in ipairs(list) do killAd(x) end; t.los = nil end
+        if not (los and vr and vr > 0 and los < 1) then clearCone(t); return end
+        local half = math.acos(math.clamp(los, -1, 1))
+        -- Is my character inside this cone right now? (close enough: within the Vision Radius; and the Twisted facing me closely enough: the dot product of where
+        -- it faces and where I am, on the floor plane, is at least the Line Of Sight number.) Walls are not checked.
+        local col = cfg.Color
+        if TV.AlertMode ~= "Off" then
+            local me = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            if me then
+                local d = me.Position - root.Position
+                local flat = Vector3.new(d.X, 0, d.Z)
+                local face = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+                if d.Magnitude <= vr and flat.Magnitude > 0.001 and face.Magnitude > 0.001 and face.Unit:Dot(flat.Unit) >= los
+                    and (TV.AlertMode == "When I'm In It" or isChasingMe(m)) then
+                    col = TV.AlertColor
+                end
+            end
+        end
+        if TV.FillCone then
+            -- flat and filled: one floor disc with its Angle set to the cone's width. A slice starts on the shape's +X side and sweeps toward +Y, so it is turned
+            -- (by -(90 degrees + half the width)) until it is centered on the way the Twisted faces, then laid flat like the other discs.
+            if t.losKind ~= "fill" then clearCone(t); local a = Instance.new("CylinderHandleAdornment"); a.Parent = ensureHolder(); t.los = { a }; t.losKind = "fill" end
+            local a = t.los[1]
+            a.Adornee = root; a.Radius = vr; a.Height = 0.15; a.Angle = math.min(360, math.deg(half) * 2)
+            a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0) * CFrame.Angles(0, 0, -(math.pi / 2 + half))
+            look(a, col, 5)
             return
         end
-        local half = math.acos(math.clamp(los, -1, 1))
         local full = half >= math.pi - 0.001
         local need = full and ARC_STEPS * 2 or ARC_STEPS + 2
-        if list and #list ~= need then for _, x in ipairs(list) do killAd(x) end; list = nil end
-        if not list then
-            list = {}
-            for i = 1, need do
-                local a = Instance.new("CylinderHandleAdornment"); a.Parent = ensureHolder(); list[i] = a
-            end
-            t.los = list
+        if t.losKind ~= "line" or #t.los ~= need then
+            clearCone(t)
+            local list = {}
+            for i = 1, need do local a = Instance.new("CylinderHandleAdornment"); a.Parent = ensureHolder(); list[i] = a end
+            t.los, t.losKind = list, "line"
         end
+        local list = t.los
         local base = CFrame.new(0, -drop + 0.1, 0)
         local function place(a, cf, len)
-            a.Adornee = root; a.Radius = 0.3; a.Height = len; a.CFrame = cf; look(a, cfg, 5)
+            a.Adornee = root; a.Radius = 0.3; a.Height = len; a.CFrame = cf; look(a, col, 5)
         end
         local steps = full and ARC_STEPS * 2 or ARC_STEPS
         local span = full and 2 * math.pi or 2 * half
@@ -6675,21 +6705,27 @@ Features.twistedvis = (function()
                         for i, key in ipairs(RADII_ORDER) do
                             local cfg, a = TV.Radii[key], t[key]
                             local v = cfg.On and stat(m, key) or nil
-                            if v and v > 0 and v < 5000 then      -- (Twisted Dyle's hearing is 9999: "everywhere", not worth a disc)
-                                if not a or not a.Parent then
-                                    a = Instance.new("CylinderHandleAdornment"); a.Name = key; a.Parent = ensureHolder(); t[key] = a
-                                end
+                            if v and v > 0 and v < 5000 then      -- (Twisted Dyle's hearing is 9999: "everywhere", not worth drawing)
+                                local sphere = TV.Shape == "Sphere"
+                                local class = sphere and "SphereHandleAdornment" or "CylinderHandleAdornment"
+                                if a and (not a.Parent or a.ClassName ~= class) then killAd(a); a = nil end      -- the shape was switched
+                                if not a then a = Instance.new(class); a.Name = key; a.Parent = ensureHolder(); t[key] = a end
                                 a.Adornee = root
-                                a.Radius, a.Height = v, 0.15
-                                a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0)
-                                look(a, cfg, i)
+                                a.Radius = v
+                                if sphere then
+                                    a.CFrame = CFrame.new()            -- an orb around the Twisted's middle, like a hitbox
+                                else
+                                    a.Height = 0.15
+                                    a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0)
+                                end
+                                look(a, cfg.Color, i)
                             elseif a then
                                 killAd(a); t[key] = nil
                             end
                         end
                         local los = TV.Radii.LineOfSight
                         if los.On then drawCone(m, t, root, drop, los)
-                        elseif t.los then for _, x in ipairs(t.los) do killAd(x) end; t.los = nil end
+                        else clearCone(t) end
                     end
                 end
             end
@@ -6721,9 +6757,10 @@ Features.twistedvis = (function()
     end
     local function styleFor(m)
         local s = TV.Chase.Style
-        if TV.Chase.MatchLethal then
+        if TV.Chase.MatchType then
             local d = dataFor(m)
-            if d and d.Lethal == true then s = "Lethal" end
+            if d and d.Lethal == true then s = "Lethal"        -- red, like the game's lethal arrow
+            elseif d and d.Ranged == true then s = "Ranged" end -- yellow (Goob, Scraps, Gigi)
         end
         return s
     end
@@ -6781,39 +6818,35 @@ Features.twistedvis = (function()
     end)
     connect(RunService.RenderStepped, function() pcall(stepChase) end)
 
-    -- ------------------------------------------------------------ stat printout
-    local function dumpStats()
-        local list = monsters()
-        if #list == 0 then toast("No Twisteds in the room right now.", "info"); return end
-        for _, m in ipairs(list) do
-            local function f(k) local v = stat(m, k); return v and tostring(v) or "-" end
-            print(string.format("[TonyScriptPalace] %s: Hearing %s, Vision %s, Instant %s, Kill %s, Line Of Sight %s", m.Name, f("HearingRadius"), f("VisionRadius"), f("InstantRadius"), f("KillRadius"), f("LineOfSight")))
-        end
-        toast("Twisted stats printed to the console (F9).", "ok")
-    end
-
     -- ------------------------------------------------------------ page
     local function build()
         local secs = {}
-        local rc = { { t = "text", text = "Draws each Twisted's ranges around it. Hearing, Vision, Instant and Kill are flat discs on the floor under it (the radius is in studs). Line Of Sight is a cone in front of it: the game stores it as a number (0.4 for most Twisteds) that works like how directly it has to face you to see you, so the cone's width comes from that number and its length from the Vision Radius. The values are each Twisted's base stats. Cards that change them (Deaf Ears, Nearsighted and so on) are applied by the server and aren't reflected here." } }
+        local rc = { { t = "text", text = "Draws each Twisted's ranges around it (radius in studs). Shape: Flat is a disc on the floor under it, Sphere is an orb around its middle (handy for Kill Radius, which works like a hitbox). Line Of Sight is a cone in front of it: the game stores it as a number (0.4 for most Twisteds) that works like how directly it has to face you to see you, so the cone's width comes from that number and its length from the Vision Radius. The values are each Twisted's base stats. Cards that change them (Deaf Ears, Nearsighted and so on) are applied by the server and aren't reflected here." },
+            { t = "dropdown", text = "Shape", get = function() return TV.Shape end, options = function() return SHAPES end, set = function(o) TV.Shape = o; refreshPage() end } }
         for _, key in ipairs({ "HearingRadius", "VisionRadius", "InstantRadius", "KillRadius", "LineOfSight" }) do
             local cfg = TV.Radii[key]
             rc[#rc + 1] = { t = "toggle", text = "Show " .. cfg.Label, get = function() return cfg.On end, set = function(v) cfg.On = v end }
             rc[#rc + 1] = { t = "color", text = cfg.Label .. " Color", rainbow = false, get = function() return cfg.Color end, set = function(v) cfg.Color = v end,
                 default = function() return DEFAULT_COLORS[key] end }
+            if key == "LineOfSight" then
+                rc[#rc + 1] = { t = "toggle", text = "Fill In Line Of Sight Cone", get = function() return TV.FillCone end, set = function(v) TV.FillCone = v end }
+                rc[#rc + 1] = { t = "dropdown", text = "Line Of Sight Alert", get = function() return TV.AlertMode end, options = function() return ALERT_MODES end, set = function(o) TV.AlertMode = o; refreshPage() end }
+                rc[#rc + 1] = { t = "color", text = "Line Of Sight Alert Color", rainbow = false, get = function() return TV.AlertColor end, set = function(v) TV.AlertColor = v end, default = function() return C(255, 0, 0) end }
+                rc[#rc + 1] = { t = "text", text = "Line Of Sight Alert turns that Twisted's cone to the alert color while you are standing in it. The second choice only does it for a Twisted that is also chasing you (its Chasing flag is on and its ChasingValue is you). \"In it\" means within its Vision Radius and in front of it by its Line Of Sight number; walls aren't checked, so it can go red when something is in the way." }
+            end
         end
         rc[#rc + 1] = { t = "slider", text = "Transparency", min = 0.3, max = 0.95, dec = 2, get = function() return TV.Transparency end, set = function(v) TV.Transparency = v end }
         rc[#rc + 1] = { t = "toggle", text = "Show Through Walls", get = function() return TV.ThroughWalls end, set = function(v) TV.ThroughWalls = v end }
         rc[#rc + 1] = { t = "toggle", text = "Include Twisted Dessa", get = function() return TV.IncludeDessa end, set = function(v) TV.IncludeDessa = v end }
-        rc[#rc + 1] = { t = "buttons", items = { { label = "Print Twisted Stats To Console", fn = dumpStats } } }
         secs[#secs + 1] = { title = "Radius Visualizers", controls = rc }
 
         local ch = TV.Chase
         secs[#secs + 1] = { title = "Chasing Indicators", controls = {
             { t = "text", text = "The game's own spotted arrow, same image and position, but it doesn't fade out. While Chased: one arrow per Twisted that is after you, kept until it stops chasing you or loses interest. Always: one for every Twisted on the floor, chasing or not, so you always know which way each one is. They show up only during a round, because the game hides its indicator panel outside one." },
-            { t = "dropdown", text = "Show Arrows", get = function() return ch.Mode end, options = function() return CHASE_MODES end, set = function(o) ch.Mode = o end },
-            { t = "dropdown", text = "Arrow Style", get = function() return ch.Style end, options = function() return CHASE_STYLES end, set = function(o) ch.Style = o end },
-            { t = "toggle", text = "Red Arrow For Lethal Twisteds", get = function() return ch.MatchLethal end, set = function(v) ch.MatchLethal = v end },
+            { t = "dropdown", text = "Show Arrows", get = function() return ch.Mode end, options = function() return CHASE_MODES end, set = function(o) ch.Mode = o; refreshPage() end },
+            { t = "dropdown", text = "Arrow Style", get = function() return ch.Style end, options = function() return CHASE_STYLES end, set = function(o) ch.Style = o; refreshPage() end },
+            { t = "toggle", text = "Color Arrow By Twisted Type", get = function() return ch.MatchType end, set = function(v) ch.MatchType = v end },
+            { t = "text", text = "With Color Arrow By Twisted Type on, Lethal Twisteds get the red arrow and Ranged Twisteds (Goob, Scraps, Gigi) get the yellow one. Every other Twisted uses the Arrow Style above." },
             { t = "toggle", text = "Hide Arrow When The Twisted Is On Screen", get = function() return ch.HideOnScreen end, set = function(v) ch.HideOnScreen = v end },
             { t = "toggle", text = "Include Twisted Dessa", get = function() return ch.IncludeDessa end, set = function(v) ch.IncludeDessa = v end },
         } }
@@ -6825,8 +6858,8 @@ Features.twistedvis = (function()
         local r = {}
         for k, cfg in pairs(TV.Radii) do r[k] = { On = cfg.On, Color = hexOf(cfg.Color) } end
         local c = TV.Chase
-        return { Radii = r, Transparency = TV.Transparency, ThroughWalls = TV.ThroughWalls, IncludeDessa = TV.IncludeDessa,
-            Chase = { Mode = c.Mode, Style = c.Style, MatchLethal = c.MatchLethal, HideOnScreen = c.HideOnScreen, IncludeDessa = c.IncludeDessa } }
+        return { Radii = r, Shape = TV.Shape, FillCone = TV.FillCone, AlertMode = TV.AlertMode, AlertColor = hexOf(TV.AlertColor), Transparency = TV.Transparency, ThroughWalls = TV.ThroughWalls, IncludeDessa = TV.IncludeDessa,
+            Chase = { Mode = c.Mode, Style = c.Style, MatchType = c.MatchType, HideOnScreen = c.HideOnScreen, IncludeDessa = c.IncludeDessa } }
     end
     local function apply(d)
         if type(d) ~= "table" then return end
@@ -6839,6 +6872,10 @@ Features.twistedvis = (function()
                 end
             end
         end
+        if table.find(SHAPES, d.Shape) then TV.Shape = d.Shape end
+        if type(d.FillCone) == "boolean" then TV.FillCone = d.FillCone end
+        if table.find(ALERT_MODES, d.AlertMode) then TV.AlertMode = d.AlertMode end
+        TV.AlertColor = colorOf(d.AlertColor) or TV.AlertColor
         if type(d.Transparency) == "number" then TV.Transparency = math.clamp(d.Transparency, 0.3, 0.95) end
         if type(d.ThroughWalls) == "boolean" then TV.ThroughWalls = d.ThroughWalls end
         if type(d.IncludeDessa) == "boolean" then TV.IncludeDessa = d.IncludeDessa end
@@ -6846,7 +6883,7 @@ Features.twistedvis = (function()
         if type(s) == "table" then
             if table.find(CHASE_MODES, s.Mode) then c.Mode = s.Mode end
             if table.find(CHASE_STYLES, s.Style) then c.Style = s.Style end
-            if type(s.MatchLethal) == "boolean" then c.MatchLethal = s.MatchLethal end
+            if type(s.MatchType) == "boolean" then c.MatchType = s.MatchType elseif type(s.MatchLethal) == "boolean" then c.MatchType = s.MatchLethal end
             if type(s.HideOnScreen) == "boolean" then c.HideOnScreen = s.HideOnScreen end
             if type(s.IncludeDessa) == "boolean" then c.IncludeDessa = s.IncludeDessa end
         end
