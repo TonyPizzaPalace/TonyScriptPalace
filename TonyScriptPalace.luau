@@ -6523,9 +6523,10 @@ end
 
 --#endregion page-esp
 --#region page-twistedvis
--- Twisted Visualizers: radius discs (Hearing / Instant / Kill / Vision), a Line Of Sight beam, and Chasing Indicators (screen arrows toward each Twisted).
--- Everything lives in this do-block and is reached through Features.twistedvis (build / unload / serialize / apply), so it adds no top-level locals.
-do
+-- Twisted Visualizers: radius discs (Hearing / Instant / Kill / Vision), a Line Of Sight cone, and Chasing Indicators (the game's own spotted arrow, kept on).
+-- The whole thing is one function whose result goes into Features.twistedvis (build / unload / serialize / apply). A function has its own local-variable space,
+-- which this script's main chunk has run out of, so none of this can be written as plain top-level locals.
+Features.twistedvis = (function()
     local TV = {
         Radii = {
             HearingRadius = { On = false, Color = C(255, 200, 0),   Label = "Hearing Radius" },
@@ -6535,12 +6536,17 @@ do
             LineOfSight   = { On = false, Color = C(0, 255, 128),   Label = "Line Of Sight" },
         },
         Transparency = 0.8, ThroughWalls = true, IncludeDessa = true,
-        Chase = { Mode = "Off", Color = C(255, 60, 60), Size = 28, Ring = 180, Distance = false, HideOnScreen = false, IncludeDessa = true },
+        Chase = { Mode = "Off", Style = "Default", MatchLethal = true, HideOnScreen = false, IncludeDessa = true },
     }
-    local RADII_ORDER = { "HearingRadius", "VisionRadius", "InstantRadius", "KillRadius", "LineOfSight" }   -- biggest discs first so the small ones draw on top
+    local DEFAULT_COLORS = { HearingRadius = C(255, 200, 0), InstantRadius = C(255, 0, 0), KillRadius = C(255, 0, 255), VisionRadius = C(0, 170, 255), LineOfSight = C(0, 255, 128) }
+    local RADII_ORDER = { "HearingRadius", "VisionRadius", "InstantRadius", "KillRadius" }   -- biggest discs first so the small ones draw on top
     local CHASE_MODES = { "Off", "While Chased", "Always" }
+    local CHASE_STYLES = { "Default", "Ranged", "Lethal" }
+    -- the game's own three looks for its spotted arrow (SpottedIndicators widget)
+    local STYLE_IMG = { Default = "rbxassetid://108396695400804", Ranged = "rbxassetid://89977011599826", Lethal = "rbxassetid://130003390406761" }
+    local STYLE_COL = { Default = C(255, 255, 255), Ranged = C(255, 236, 127), Lethal = C(255, 31, 31) }
 
-    -- ------------------------------------------------------------ finding Twisteds and reading their stats
+    -- ------------------------------------------------------------ finding Twisteds and their stats
     local function monsters()
         local out = {}
         local cr = Workspace:FindFirstChild("CurrentRoom")
@@ -6567,64 +6573,97 @@ do
     end
     local function isChasingMe(m) return flagOn(m, "Chasing") and not flagOn(m, "LostInterest") and chasesMe(m) ~= false end
 
-    -- A stat can be an Attribute on the Twisted, a NumberValue child, or live inside a Folder / Configuration on it. Where it was found is remembered per Twisted.
-    local where = setmetatable({}, { __mode = "k" })   -- [model] = { [stat] = function() return number end }
-    local function numOf(v) if typeof(v) == "number" then return v end; if typeof(v) == "Instance" and (v:IsA("NumberValue") or v:IsA("IntValue")) then return v.Value end end
-    local function locate(m, stat)
-        local a = m:GetAttribute(stat)
-        if typeof(a) == "number" or typeof(a) == "boolean" then return function() return m:GetAttribute(stat) end end
-        local c = m:FindFirstChild(stat)
-        if c and (c:IsA("ValueBase")) then return function() return c.Value end end
-        for _, k in ipairs(m:GetChildren()) do
-            if k:IsA("Folder") or k:IsA("Configuration") then
-                local ka = k:GetAttribute(stat)
-                if typeof(ka) == "number" or typeof(ka) == "boolean" then return function() return k:GetAttribute(stat) end end
-                local kc = k:FindFirstChild(stat)
-                if kc and kc:IsA("ValueBase") then return function() return kc.Value end end
-            end
-        end
-        return nil
+    -- A Twisted's stats are not on the model. They sit in ReplicatedStorage.MonsterData.<model name> (FinnMonster, PoppyMonster, ...), which the client can read.
+    -- The server applies card changes (Deaf Ears, Nearsighted, ...) on its own, so what is drawn here is the Twisted's base value.
+    local dataCache = {}     -- [model name] = { data = table or false, at = time }
+    local function dataFor(m)
+        local e = dataCache[m.Name]
+        if e and (e.data or os.clock() - e.at < 5) then return e.data end
+        local md = ReplicatedStorage:FindFirstChild("MonsterData")
+        local mod = md and md:FindFirstChild(m.Name)
+        local ok, t = false, nil
+        if mod and mod:IsA("ModuleScript") then ok, t = pcall(require, mod) end
+        e = { data = (ok and type(t) == "table") and t or false, at = os.clock() }
+        dataCache[m.Name] = e
+        return e.data
     end
-    local function stat(m, name)
-        local w = where[m]; if not w then w = {}; where[m] = w end
-        local f = w[name]
-        if f == nil then f = locate(m, name) or false; w[name] = f; if f == false then w[name .. "_t"] = os.clock() end end
-        if f == false then
-            if os.clock() - (w[name .. "_t"] or 0) > 3 then w[name] = nil end      -- not found: look again every few seconds (the stat may be added later)
-            return nil
-        end
-        local ok, v = pcall(f)
-        if not ok then w[name] = nil; return nil end
-        return v
+    local function stat(m, key)
+        local d = dataFor(m)
+        local v = d and d[key]
+        if type(v) == "number" then return v end
+        local a = m:GetAttribute(key)       -- in case a Twisted ever carries the stat itself
+        if type(a) == "number" then return a end
+        return nil
     end
     local function rootOf(m)
         return m.PrimaryPart or m:FindFirstChild("HumanoidRootPart") or m:FindFirstChildWhichIsA("BasePart", true)
     end
 
-    -- ------------------------------------------------------------ radius discs
+    -- ------------------------------------------------------------ radius discs and the sight cone
     local holder
-    local live = {}          -- [model] = { [stat] = adornment }
+    local live = {}          -- [model] = { [stat] = adornment, los = { adornments } }
     local function ensureHolder()
         if holder and holder.Parent then return holder end
         holder = Instance.new("Folder"); holder.Name = "TonyScriptPalaceVisuals"; holder.Parent = guiParent()
         return holder
     end
+    local function killAd(a) if a then pcall(function() a:Destroy() end) end end
     local function dropModel(m)
         local t = live[m]; if not t then return end
-        for _, a in pairs(t) do pcall(function() a:Destroy() end) end
+        for k, a in pairs(t) do
+            if k == "los" then for _, x in ipairs(a) do killAd(x) end else killAd(a) end
+        end
         live[m] = nil
     end
     local function anyRadiusOn()
-        for _, k in ipairs(RADII_ORDER) do if TV.Radii[k].On then return true end end
+        for _, cfg in pairs(TV.Radii) do if cfg.On then return true end end
         return false
     end
-    local function applyLook(a, cfg, z)
+    local function look(a, cfg, z)
         a.Color3 = cfg.Color; a.Transparency = TV.Transparency; a.AlwaysOnTop = TV.ThroughWalls; a.ZIndex = z
+    end
+    local ARC_STEPS = 8
+    -- Line Of Sight is a number like 0.4, not a distance. It reads as how much a Twisted has to be facing you to see you (1 = dead ahead only, 0 = a half circle,
+    -- -1 = all around), so it is drawn as a cone: half-angle acos(LineOfSight), as long as the Twisted's Vision Radius.
+    local function drawCone(m, t, root, drop, cfg)
+        local los, vr = stat(m, "LineOfSight"), stat(m, "VisionRadius")
+        local list = t.los
+        if not (los and vr and vr > 0 and los < 1) then
+            if list then for _, x in ipairs(list) do killAd(x) end; t.los = nil end
+            return
+        end
+        local half = math.acos(math.clamp(los, -1, 1))
+        local full = half >= math.pi - 0.001
+        local need = full and ARC_STEPS * 2 or ARC_STEPS + 2
+        if list and #list ~= need then for _, x in ipairs(list) do killAd(x) end; list = nil end
+        if not list then
+            list = {}
+            for i = 1, need do
+                local a = Instance.new("CylinderHandleAdornment"); a.Parent = ensureHolder(); list[i] = a
+            end
+            t.los = list
+        end
+        local base = CFrame.new(0, -drop + 0.1, 0)
+        local function place(a, cf, len)
+            a.Adornee = root; a.Radius = 0.3; a.Height = len; a.CFrame = cf; look(a, cfg, 5)
+        end
+        local steps = full and ARC_STEPS * 2 or ARC_STEPS
+        local span = full and 2 * math.pi or 2 * half
+        local start = full and 0 or -half
+        local dTheta = span / steps
+        local chord = 2 * vr * math.sin(dTheta / 2)
+        for i = 1, steps do
+            local mid = start + (i - 0.5) * dTheta
+            place(list[i], base * CFrame.Angles(0, -mid, 0) * CFrame.new(0, 0, -vr * math.cos(dTheta / 2)) * CFrame.Angles(0, math.pi / 2, 0), chord)
+        end
+        if not full then
+            place(list[steps + 1], base * CFrame.Angles(0, half, 0) * CFrame.new(0, 0, -vr / 2), vr)
+            place(list[steps + 2], base * CFrame.Angles(0, -half, 0) * CFrame.new(0, 0, -vr / 2), vr)
+        end
     end
     local function sweepRadii()
         local seen = {}
         if anyRadiusOn() then
-            local f = ensureHolder()
             for _, m in ipairs(monsters()) do
                 if TV.IncludeDessa or not isDessa(m) then
                     local root = rootOf(m)
@@ -6634,25 +6673,23 @@ do
                         local hum = m:FindFirstChildOfClass("Humanoid")
                         local drop = root.Size.Y / 2 + (hum and hum.HipHeight or 0)      -- from the root part down to the floor under it
                         for i, key in ipairs(RADII_ORDER) do
-                            local cfg, a, v = TV.Radii[key], t[key], nil
-                            if cfg.On then v = stat(m, key) end
-                            if cfg.On and typeof(v) == "number" and v > 0 then
+                            local cfg, a = TV.Radii[key], t[key]
+                            local v = cfg.On and stat(m, key) or nil
+                            if v and v > 0 and v < 5000 then      -- (Twisted Dyle's hearing is 9999: "everywhere", not worth a disc)
                                 if not a or not a.Parent then
-                                    a = Instance.new("CylinderHandleAdornment"); a.Name = key; a.Parent = f; t[key] = a
+                                    a = Instance.new("CylinderHandleAdornment"); a.Name = key; a.Parent = ensureHolder(); t[key] = a
                                 end
                                 a.Adornee = root
-                                if key == "LineOfSight" then      -- a thin beam straight ahead of the Twisted, at the height of its root part
-                                    a.Radius, a.Height = 0.35, v
-                                    a.CFrame = CFrame.new(0, 0, -v / 2)
-                                else                              -- a flat disc on the floor under it
-                                    a.Radius, a.Height = v, 0.15
-                                    a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0)
-                                end
-                                applyLook(a, cfg, i)
+                                a.Radius, a.Height = v, 0.15
+                                a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0)
+                                look(a, cfg, i)
                             elseif a then
-                                pcall(function() a:Destroy() end); t[key] = nil
+                                killAd(a); t[key] = nil
                             end
                         end
+                        local los = TV.Radii.LineOfSight
+                        if los.On then drawCone(m, t, root, drop, los)
+                        elseif t.los then for _, x in ipairs(t.los) do killAd(x) end; t.los = nil end
                     end
                 end
             end
@@ -6660,59 +6697,80 @@ do
         for m in pairs(live) do if not seen[m] or not m.Parent then dropModel(m) end end
     end
 
-    -- ------------------------------------------------------------ chasing indicators
-    local cgui, arrows = nil, {}     -- arrows[model] = { frame, label }
-    local function ensureGui()
-        if cgui and cgui.Parent then return cgui end
-        cgui = Instance.new("ScreenGui"); cgui.Name = "TSP_ChasingIndicators"; cgui.ResetOnSpawn = false; cgui.IgnoreGuiInset = true; cgui.DisplayOrder = 40
-        cgui.Parent = guiParent()
-        return cgui
+    -- ------------------------------------------------------------ chasing indicators (the game's own spotted arrow)
+    -- The game builds each arrow by cloning HUD.SpottedIndicators.Radial.Template, giving it an image and a color, and turning it toward the Twisted. This does the
+    -- same with the same template, so it looks and sits exactly like the real one. The difference: the game fades its arrow out after about two seconds, this one stays.
+    local arrows = {}     -- [model] = ImageLabel
+    local function gameParts()
+        local pg = LP:FindFirstChild("PlayerGui")
+        local hud = pg and pg:FindFirstChild("HUD")
+        local si = hud and hud:FindFirstChild("SpottedIndicators")
+        local radial = si and si:FindFirstChild("Radial")
+        local tpl = radial and radial:FindFirstChild("Template")
+        if radial and tpl and tpl:IsA("ImageLabel") then return radial, tpl end
+        return nil
     end
-    local function dropArrow(m) local a = arrows[m]; if a then pcall(function() a.frame:Destroy() end); arrows[m] = nil end end
-    local function makeArrow()
-        local fr = Instance.new("Frame"); fr.BackgroundTransparency = 1; fr.AnchorPoint = Vector2.new(0.5, 0.5); fr.Parent = ensureGui()
-        local tri = Instance.new("TextLabel"); tri.BackgroundTransparency = 1; tri.Size = UDim2.fromScale(1, 1); tri.Text = "▲"; tri.Font = Enum.Font.GothamBlack
-        tri.TextScaled = true; tri.TextStrokeTransparency = 0; tri.TextStrokeColor3 = Color3.new(0, 0, 0); tri.Parent = fr
-        local dist = Instance.new("TextLabel"); dist.BackgroundTransparency = 1; dist.AnchorPoint = Vector2.new(0.5, 0); dist.Position = UDim2.new(0.5, 0, 1, 0); dist.Size = UDim2.new(2, 0, 0.5, 0)
-        dist.Font = Enum.Font.GothamBold; dist.TextScaled = true; dist.TextStrokeTransparency = 0.3; dist.Parent = fr
-        return { frame = fr, tri = tri, dist = dist }
+    local function dropArrow(m) local a = arrows[m]; if a then killAd(a); arrows[m] = nil end end
+    local function rotationToward(pos)      -- the same maths the game uses
+        local cam = Workspace.CurrentCamera
+        if not cam then return 0 end
+        local v = cam:WorldToScreenPoint(pos)
+        local d = Vector2.new(v.X, v.Y) - cam.ViewportSize / 2
+        if v.Z < 0 then d = -d end
+        return math.deg(math.atan2(d.X, -d.Y))
+    end
+    local function styleFor(m)
+        local s = TV.Chase.Style
+        if TV.Chase.MatchLethal then
+            local d = dataFor(m)
+            if d and d.Lethal == true then s = "Lethal" end
+        end
+        return s
+    end
+    local function applyStyle(a, tpl, style)
+        local img, col = tpl:GetAttribute(style .. "Image"), tpl:GetAttribute(style .. "Color")      -- the template can override the looks, like the game allows
+        a.Image = (type(img) == "string" and img ~= "") and img or STYLE_IMG[style] or STYLE_IMG.Default
+        a.ImageColor3 = typeof(col) == "Color3" and col or STYLE_COL[style] or STYLE_COL.Default
     end
     local function stepChase()
         local C_ = TV.Chase
         local cam = Workspace.CurrentCamera
-        if C_.Mode == "Off" or not cam then
+        local radial, tpl
+        if C_.Mode ~= "Off" and cam then radial, tpl = gameParts() end
+        if not radial then
             if next(arrows) then for m in pairs(arrows) do dropArrow(m) end end
             return
         end
-        local vp = cam.ViewportSize
-        local center = vp / 2
-        local ring = math.min(C_.Ring, math.min(vp.X, vp.Y) / 2 - C_.Size)
         local seen = {}
         for _, m in ipairs(monsters()) do
             if (C_.IncludeDessa or not isDessa(m)) and (C_.Mode == "Always" or isChasingMe(m)) then
-                local ok, pos = pcall(function() return m:GetPivot().Position end)
+                local ok, pos = pcall(function() return m.PrimaryPart and m.PrimaryPart.Position or m:GetPivot().Position end)
                 if ok then
                     local scr, onScreen = cam:WorldToViewportPoint(pos)
                     if not (C_.HideOnScreen and onScreen and scr.Z > 0) then
                         seen[m] = true
-                        local a = arrows[m]; if not a then a = makeArrow(); arrows[m] = a end
-                        local lv = cam.CFrame:VectorToObjectSpace(pos - cam.CFrame.Position)
-                        local ang = math.atan2(lv.X, -lv.Z)          -- 0 = straight ahead, positive = to your right
-                        a.frame.Size = UDim2.fromOffset(C_.Size, C_.Size)
-                        a.frame.Position = UDim2.fromOffset(center.X + math.sin(ang) * ring, center.Y - math.cos(ang) * ring)
-                        a.tri.Rotation = math.deg(ang)
-                        local col = C_.Color
-                        a.tri.TextColor3, a.dist.TextColor3 = col, col
-                        a.dist.Visible = C_.Distance
-                        if C_.Distance then
-                            local me = LP.Character and LP.Character:GetPivot().Position or cam.CFrame.Position
-                            a.dist.Text = string.format("%d", math.floor((pos - me).Magnitude + 0.5))
+                        local a = arrows[m]
+                        if not a or not a.Parent then
+                            a = tpl:Clone()
+                            a.Name = "TSPChasingIndicator"
+                            a.Visible = true
+                            a.ImageTransparency = 0.25                 -- where the game's arrow settles before it fades
+                            local sc = a:FindFirstChildOfClass("UIScale")
+                            if sc then      -- the same pop-in the game plays
+                                local to = sc.Scale
+                                sc.Scale = to * 1.6
+                                TweenService:Create(sc, TweenInfo.new(0.4, Enum.EasingStyle.Bounce, Enum.EasingDirection.InOut), { Scale = to }):Play()
+                            end
+                            a.Parent = radial
+                            arrows[m] = a
                         end
+                        applyStyle(a, tpl, styleFor(m))
+                        a.Rotation = rotationToward(pos)
                     end
                 end
             end
         end
-        for m in pairs(arrows) do if not seen[m] then dropArrow(m) end end
+        for m in pairs(arrows) do if not seen[m] or not m.Parent then dropArrow(m) end end
     end
 
     -- ------------------------------------------------------------ loops
@@ -6723,22 +6781,13 @@ do
     end)
     connect(RunService.RenderStepped, function() pcall(stepChase) end)
 
-    -- ------------------------------------------------------------ stat dump (so the real names and where they live can be checked)
+    -- ------------------------------------------------------------ stat printout
     local function dumpStats()
         local list = monsters()
-        if #list == 0 then print("[TonyScriptPalace] No Twisteds in the room right now."); toast("No Twisteds in the room right now.", "info"); return end
+        if #list == 0 then toast("No Twisteds in the room right now.", "info"); return end
         for _, m in ipairs(list) do
-            local parts = {}
-            for k, v in pairs(m:GetAttributes()) do parts[#parts + 1] = k .. "=" .. tostring(v) end
-            for _, c in ipairs(m:GetChildren()) do
-                if c:IsA("ValueBase") then parts[#parts + 1] = c.Name .. "(" .. c.ClassName .. ")=" .. tostring(c.Value)
-                elseif c:IsA("Folder") or c:IsA("Configuration") then
-                    for k, v in pairs(c:GetAttributes()) do parts[#parts + 1] = c.Name .. "." .. k .. "=" .. tostring(v) end
-                    for _, cc in ipairs(c:GetChildren()) do if cc:IsA("ValueBase") then parts[#parts + 1] = c.Name .. "." .. cc.Name .. "=" .. tostring(cc.Value) end end
-                end
-            end
-            table.sort(parts)
-            print("[TonyScriptPalace] " .. m.Name .. ": " .. table.concat(parts, ", "))
+            local function f(k) local v = stat(m, k); return v and tostring(v) or "-" end
+            print(string.format("[TonyScriptPalace] %s: Hearing %s, Vision %s, Instant %s, Kill %s, Line Of Sight %s", m.Name, f("HearingRadius"), f("VisionRadius"), f("InstantRadius"), f("KillRadius"), f("LineOfSight")))
         end
         toast("Twisted stats printed to the console (F9).", "ok")
     end
@@ -6746,28 +6795,25 @@ do
     -- ------------------------------------------------------------ page
     local function build()
         local secs = {}
-        local rc = { { t = "text", text = "Draws each Twisted's ranges around it, read live from the Twisted itself. Hearing, Vision, Instant and Kill are flat discs on the floor under it (the radius is in studs). Line Of Sight is a beam straight ahead of it. A range only shows up if the Twisted actually has that stat, so a Twisted without a Kill Radius just doesn't get one." } }
-        for _, key in ipairs(RADII_ORDER) do
+        local rc = { { t = "text", text = "Draws each Twisted's ranges around it. Hearing, Vision, Instant and Kill are flat discs on the floor under it (the radius is in studs). Line Of Sight is a cone in front of it: the game stores it as a number (0.4 for most Twisteds) that works like how directly it has to face you to see you, so the cone's width comes from that number and its length from the Vision Radius. The values are each Twisted's base stats. Cards that change them (Deaf Ears, Nearsighted and so on) are applied by the server and aren't reflected here." } }
+        for _, key in ipairs({ "HearingRadius", "VisionRadius", "InstantRadius", "KillRadius", "LineOfSight" }) do
             local cfg = TV.Radii[key]
             rc[#rc + 1] = { t = "toggle", text = "Show " .. cfg.Label, get = function() return cfg.On end, set = function(v) cfg.On = v end }
             rc[#rc + 1] = { t = "color", text = cfg.Label .. " Color", rainbow = false, get = function() return cfg.Color end, set = function(v) cfg.Color = v end,
-                default = function() return ({ HearingRadius = C(255, 200, 0), InstantRadius = C(255, 0, 0), KillRadius = C(255, 0, 255), VisionRadius = C(0, 170, 255), LineOfSight = C(0, 255, 128) })[key] end }
+                default = function() return DEFAULT_COLORS[key] end }
         end
         rc[#rc + 1] = { t = "slider", text = "Transparency", min = 0.3, max = 0.95, dec = 2, get = function() return TV.Transparency end, set = function(v) TV.Transparency = v end }
         rc[#rc + 1] = { t = "toggle", text = "Show Through Walls", get = function() return TV.ThroughWalls end, set = function(v) TV.ThroughWalls = v end }
         rc[#rc + 1] = { t = "toggle", text = "Include Twisted Dessa", get = function() return TV.IncludeDessa end, set = function(v) TV.IncludeDessa = v end }
         rc[#rc + 1] = { t = "buttons", items = { { label = "Print Twisted Stats To Console", fn = dumpStats } } }
-        rc[#rc + 1] = { t = "text", text = "If a range never shows up, press the button while a Twisted is around and check the console (F9). It lists every stat the game put on each Twisted, so you can see the real names." }
         secs[#secs + 1] = { title = "Radius Visualizers", controls = rc }
 
         local ch = TV.Chase
         secs[#secs + 1] = { title = "Chasing Indicators", controls = {
-            { t = "text", text = "An arrow around the middle of your screen pointing at each Twisted. While Chased: one arrow per Twisted that is after you, and it stays until that Twisted stops chasing you (or loses interest), instead of fading out like the game's spotted arrow. Always: one for every Twisted on the floor, chasing or not, so you always know which way each one is." },
+            { t = "text", text = "The game's own spotted arrow, same image and position, but it doesn't fade out. While Chased: one arrow per Twisted that is after you, kept until it stops chasing you or loses interest. Always: one for every Twisted on the floor, chasing or not, so you always know which way each one is. They show up only during a round, because the game hides its indicator panel outside one." },
             { t = "dropdown", text = "Show Arrows", get = function() return ch.Mode end, options = function() return CHASE_MODES end, set = function(o) ch.Mode = o end },
-            { t = "color", text = "Arrow Color", rainbow = false, get = function() return ch.Color end, set = function(v) ch.Color = v end, default = function() return C(255, 60, 60) end },
-            { t = "slider", text = "Arrow Size", min = 12, max = 80, dec = 0, get = function() return ch.Size end, set = function(v) ch.Size = v end },
-            { t = "slider", text = "Distance From Center", min = 60, max = 450, dec = 0, get = function() return ch.Ring end, set = function(v) ch.Ring = v end },
-            { t = "toggle", text = "Show Distance Under Arrow", get = function() return ch.Distance end, set = function(v) ch.Distance = v end },
+            { t = "dropdown", text = "Arrow Style", get = function() return ch.Style end, options = function() return CHASE_STYLES end, set = function(o) ch.Style = o end },
+            { t = "toggle", text = "Red Arrow For Lethal Twisteds", get = function() return ch.MatchLethal end, set = function(v) ch.MatchLethal = v end },
             { t = "toggle", text = "Hide Arrow When The Twisted Is On Screen", get = function() return ch.HideOnScreen end, set = function(v) ch.HideOnScreen = v end },
             { t = "toggle", text = "Include Twisted Dessa", get = function() return ch.IncludeDessa end, set = function(v) ch.IncludeDessa = v end },
         } }
@@ -6780,7 +6826,7 @@ do
         for k, cfg in pairs(TV.Radii) do r[k] = { On = cfg.On, Color = hexOf(cfg.Color) } end
         local c = TV.Chase
         return { Radii = r, Transparency = TV.Transparency, ThroughWalls = TV.ThroughWalls, IncludeDessa = TV.IncludeDessa,
-            Chase = { Mode = c.Mode, Color = hexOf(c.Color), Size = c.Size, Ring = c.Ring, Distance = c.Distance, HideOnScreen = c.HideOnScreen, IncludeDessa = c.IncludeDessa } }
+            Chase = { Mode = c.Mode, Style = c.Style, MatchLethal = c.MatchLethal, HideOnScreen = c.HideOnScreen, IncludeDessa = c.IncludeDessa } }
     end
     local function apply(d)
         if type(d) ~= "table" then return end
@@ -6799,10 +6845,8 @@ do
         local c, s = TV.Chase, d.Chase
         if type(s) == "table" then
             if table.find(CHASE_MODES, s.Mode) then c.Mode = s.Mode end
-            c.Color = colorOf(s.Color) or c.Color
-            if type(s.Size) == "number" then c.Size = math.clamp(s.Size, 12, 80) end
-            if type(s.Ring) == "number" then c.Ring = math.clamp(s.Ring, 60, 450) end
-            if type(s.Distance) == "boolean" then c.Distance = s.Distance end
+            if table.find(CHASE_STYLES, s.Style) then c.Style = s.Style end
+            if type(s.MatchLethal) == "boolean" then c.MatchLethal = s.MatchLethal end
             if type(s.HideOnScreen) == "boolean" then c.HideOnScreen = s.HideOnScreen end
             if type(s.IncludeDessa) == "boolean" then c.IncludeDessa = s.IncludeDessa end
         end
@@ -6810,11 +6854,10 @@ do
     local function unload()
         for m in pairs(live) do dropModel(m) end
         for m in pairs(arrows) do dropArrow(m) end
-        if holder then pcall(function() holder:Destroy() end) end
-        if cgui then pcall(function() cgui:Destroy() end) end
+        if holder then killAd(holder) end
     end
-    Features.twistedvis = { serialize = serialize, apply = apply, build = build, unload = unload }
-end
+    return { serialize = serialize, apply = apply, build = build, unload = unload }
+end)()
 --#endregion page-twistedvis
 
 --#region page-movement
