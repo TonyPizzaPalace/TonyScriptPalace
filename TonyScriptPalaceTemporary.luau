@@ -3,7 +3,7 @@
 
 print("[TonyScriptPalace] Starting load...")
 
-function reportError(msg, tb)
+local function reportError(msg, tb)
     local full = tostring(msg) .. "\n" .. tostring(tb or "")
     warn("[TonyScriptPalace] ERROR:\n" .. full)
     pcall(function()
@@ -15,7 +15,7 @@ function reportError(msg, tb)
     end)
 end
 
-ok, err = xpcall(function()
+local ok, err = xpcall(function()
 print("[TonyScriptPalace] Inside protected block, original script starting...")
 --#region header
 --[[
@@ -53,84 +53,84 @@ print("[TonyScriptPalace] Inside protected block, original script starting...")
     Write every label in Proper Case. The Aero style lowercases it for you.
 ]]
 
-env = (getgenv and getgenv()) or _G
+local env = (getgenv and getgenv()) or _G
 if env.TonyScriptPalace and env.TonyScriptPalace.Destroy then pcall(env.TonyScriptPalace.Destroy) end
 
-Players          = game:GetService("Players")
-RunService       = game:GetService("RunService")
-UIS              = game:GetService("UserInputService")
-TweenService     = game:GetService("TweenService")
-HttpService      = game:GetService("HttpService")
-CoreGui          = game:GetService("CoreGui")
-Workspace        = game:GetService("Workspace")
-ReplicatedStorage = game:GetService("ReplicatedStorage")
-LP               = Players.LocalPlayer
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UIS              = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local HttpService      = game:GetService("HttpService")
+local CoreGui          = game:GetService("CoreGui")
+local Workspace        = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LP               = Players.LocalPlayer
 
-alive = true
-conns = {}
-function connect(sig, fn) local c = sig:Connect(fn); conns[#conns + 1] = c; return c end
-function try(f, ...) local ok, a = pcall(f, ...); if ok then return a end; return nil end
-function guiParent() return (gethui and try(gethui)) or CoreGui end
+local alive = true
+local conns = {}
+local function connect(sig, fn) local c = sig:Connect(fn); conns[#conns + 1] = c; return c end
+local function try(f, ...) local ok, a = pcall(f, ...); if ok then return a end; return nil end
+local function guiParent() return (gethui and try(gethui)) or CoreGui end
 
 --#endregion header
 --#region filesystem
 -- File system
-ROOT_DIR   = "TonyScriptPalace"
-CFG_DIR    = ROOT_DIR .. "/Configs"
-SETTINGS_F = ROOT_DIR .. "/settings.json"
+local ROOT_DIR   = "TonyScriptPalace"
+local CFG_DIR    = ROOT_DIR .. "/Configs"
+local SETTINGS_F = ROOT_DIR .. "/settings.json"
 
-function fileExists(p) return isfile and try(isfile, p) or false end
-function folderExists(p) return isfolder and try(isfolder, p) or false end
-function makeDir(p) if makefolder and not folderExists(p) then pcall(makefolder, p) end end
-function readFile(p) return readfile and try(readfile, p) or nil end
-function writeFile(p, c) if writefile then return (pcall(writefile, p, c)) end; return false end
-function listDir(p) return listfiles and try(listfiles, p) or {} end
-function deleteFile(p) if delfile then pcall(delfile, p) end end
-function baseName(p) p = tostring(p):gsub("\\", "/"); return p:match("([^/]+)$") or p end
-function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
-function jsonEncode(t) local ok, r = pcall(HttpService.JSONEncode, HttpService, t); return ok and r or nil end
-function jsonDecode(s) local ok, r = pcall(HttpService.JSONDecode, HttpService, s); return ok and r or nil end
+local function fileExists(p) return isfile and try(isfile, p) or false end
+local function folderExists(p) return isfolder and try(isfolder, p) or false end
+local function makeDir(p) if makefolder and not folderExists(p) then pcall(makefolder, p) end end
+local function readFile(p) return readfile and try(readfile, p) or nil end
+local function writeFile(p, c) if writefile then return (pcall(writefile, p, c)) end; return false end
+local function listDir(p) return listfiles and try(listfiles, p) or {} end
+local function deleteFile(p) if delfile then pcall(delfile, p) end end
+local function baseName(p) p = tostring(p):gsub("\\", "/"); return p:match("([^/]+)$") or p end
+local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+local function jsonEncode(t) local ok, r = pcall(HttpService.JSONEncode, HttpService, t); return ok and r or nil end
+local function jsonDecode(s) local ok, r = pcall(HttpService.JSONDecode, HttpService, s); return ok and r or nil end
 makeDir(ROOT_DIR); makeDir(CFG_DIR)
 
 --#endregion filesystem
 --#region colors
 -- Color helpers + presets
-C = Color3.fromRGB
-WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
-RAINBOW = "Rainbow"
+local C = Color3.fromRGB
+local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
+local RAINBOW = "Rainbow"
 -- animated "colors": Rainbow cycles every hue, Halloween swaps orange and purple, Christmas swaps red and green
-COLOR_MODES = { Rainbow = true, Halloween = true, Christmas = true }
-MODE_PAIRS = { Halloween = { Color3.fromRGB(255, 128, 0), Color3.fromRGB(128, 0, 255) }, Christmas = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 255, 0) } }
+local COLOR_MODES = { Rainbow = true, Halloween = true, Christmas = true }
+local MODE_PAIRS = { Halloween = { Color3.fromRGB(255, 128, 0), Color3.fromRGB(128, 0, 255) }, Christmas = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 255, 0) } }
 
-function hexOf(c)
+local function hexOf(c)
     return string.format("#%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
 end
-function colorOf(s)
+local function colorOf(s)
     if type(s) ~= "string" then return nil end
     local h = s:match("^#?(%x%x%x%x%x%x)$")
     if not h then return nil end
     return C(tonumber(h:sub(1, 2), 16), tonumber(h:sub(3, 4), 16), tonumber(h:sub(5, 6), 16))
 end
-function lum(c) return c.R * 0.299 + c.G * 0.587 + c.B * 0.114 end
-function copyT(t) local o = {}; for k, v in pairs(t) do o[k] = v end; return o end
+local function lum(c) return c.R * 0.299 + c.G * 0.587 + c.B * 0.114 end
+local function copyT(t) local o = {}; for k, v in pairs(t) do o[k] = v end; return o end
 
-AERO_KEYS = {
+local AERO_KEYS = {
     { "top", "Background Top" }, { "mid", "Background Middle" }, { "bottom", "Background Bottom" },
     { "accent", "Accent (Buttons / Title)" }, { "text", "Text" }, { "panel", "Panels" },
 }
-XMB_KEYS = {
+local XMB_KEYS = {
     { "top", "Background Top" }, { "bottom", "Background Bottom" }, { "wave", "Wave Color" }, { "accent", "Highlight" },
 }
-AERO_ORDER = { "Default", "Dark Mode Aero", "Aqua Green", "Sunset", "Bubblegum" }
-AERO_PRESETS = {
+local AERO_ORDER = { "Default", "Dark Mode Aero", "Aqua Green", "Sunset", "Bubblegum" }
+local AERO_PRESETS = {
     ["Default"]        = { top = C(185, 235, 255), mid = C(110, 200, 245), bottom = C(120, 215, 160), accent = C(20, 130, 215),  text = C(20, 62, 108),   panel = C(255, 255, 255) },
     ["Dark Mode Aero"] = { top = C(34, 58, 102),   mid = C(20, 38, 76),    bottom = C(12, 64, 78),    accent = C(45, 165, 235),  text = C(222, 240, 255), panel = C(18, 34, 64) },
     ["Aqua Green"]     = { top = C(205, 255, 230), mid = C(125, 228, 175), bottom = C(70, 180, 140),  accent = C(30, 170, 105),  text = C(8, 70, 50),     panel = C(255, 255, 255) },
     ["Sunset"]         = { top = C(255, 232, 190), mid = C(255, 175, 135), bottom = C(235, 120, 160), accent = C(225, 95, 60),   text = C(100, 30, 45),   panel = C(255, 255, 255) },
     ["Bubblegum"]      = { top = C(255, 220, 242), mid = C(210, 178, 255), bottom = C(155, 205, 255), accent = C(190, 80, 210),  text = C(85, 35, 105),   panel = C(255, 255, 255) },
 }
-XMB_ORDER = { "Classic Blue", "Midnight", "Emerald", "Sakura", "Graphite" }
-XMB_PRESETS = {
+local XMB_ORDER = { "Classic Blue", "Midnight", "Emerald", "Sakura", "Graphite" }
+local XMB_PRESETS = {
     ["Classic Blue"] = { top = C(38, 98, 214),  bottom = C(5, 16, 64),  wave = C(255, 255, 255), accent = C(120, 200, 255) },
     ["Midnight"]     = { top = C(40, 36, 110),  bottom = C(4, 4, 22),   wave = C(150, 150, 255), accent = C(170, 150, 255) },
     ["Emerald"]      = { top = C(24, 150, 100), bottom = C(3, 42, 34),  wave = C(190, 255, 220), accent = C(130, 255, 190) },
@@ -138,11 +138,11 @@ XMB_PRESETS = {
     ["Graphite"]     = { top = C(80, 84, 96),   bottom = C(10, 10, 14), wave = C(220, 225, 235), accent = C(210, 220, 240) },
 }
 
-XP_KEYS = {
+local XP_KEYS = {
     { "title", "Title Bar" }, { "face", "Window Face" }, { "accent", "Highlight" }, { "pane", "Side Pane" },
 }
-XP_ORDER = { "Luna Blue", "Olive Green", "Silver", "Windows Classic" }
-XP_PRESETS = {
+local XP_ORDER = { "Luna Blue", "Olive Green", "Silver", "Windows Classic" }
+local XP_PRESETS = {
     ["Luna Blue"]       = { title = C(0, 84, 227),    face = C(236, 233, 216), accent = C(49, 106, 197),  pane = C(123, 162, 231) },
     ["Olive Green"]     = { title = C(116, 138, 72),  face = C(236, 233, 216), accent = C(147, 160, 112), pane = C(190, 204, 150) },
     ["Silver"]          = { title = C(139, 137, 176), face = C(240, 240, 245), accent = C(124, 124, 148), pane = C(196, 196, 222) },
@@ -150,7 +150,7 @@ XP_PRESETS = {
 }
 
 -- Dandy's World skin (default): dark striped panels, thick black outlines, yellow headers, orange sliders
-DANDY = {}
+local DANDY = {}
 DANDY.keys = {
     { "panel", "Panels" }, { "header", "Headers / Highlight" }, { "fill", "Slider Fill" },
     { "on", "ON Color" }, { "off", "OFF Color" },
@@ -173,11 +173,11 @@ DANDY.presets = {
 --#endregion colors
 --#region settings
 -- UI settings (persisted)
-STYLE_LIST = { "dandy", "aero", "xmb", "xp" }   -- dandy = default
-function validStyle(s) return table.find(STYLE_LIST, s) ~= nil end
-function defaultWin() return { dandy = { w = 960, h = 600 }, aero = { w = 860, h = 560 }, xmb = { w = 940, h = 580 }, xp = { w = 860, h = 560 } } end
+local STYLE_LIST = { "dandy", "aero", "xmb", "xp" }   -- dandy = default
+local function validStyle(s) return table.find(STYLE_LIST, s) ~= nil end
+local function defaultWin() return { dandy = { w = 960, h = 600 }, aero = { w = 860, h = 560 }, xmb = { w = 940, h = 580 }, xp = { w = 860, h = 560 } } end
 
-S = {
+local S = {
     style = "dandy", keybind = "RightShift", scale = 1, fullscreen = false, orb = true, startHidden = false,
     autoload = true, lastConfig = "", pos = nil, sounds = true, sfxVol = 1, win = defaultWin(),
     dandy = { preset = "Dandy's World", colors = copyT(DANDY.presets["Dandy's World"]) },
@@ -185,15 +185,15 @@ S = {
     xmb = { preset = "Classic Blue", colors = copyT(XMB_PRESETS["Classic Blue"]), speed = 1, alpha = 0.8 },
     xp = { preset = "Luna Blue", colors = copyT(XP_PRESETS["Luna Blue"]) },
 }
-dirty = false
+local dirty = false
 
-function packColors(t) local o = {}; for k, v in pairs(t) do o[k] = hexOf(v) end; return o end
-function unpackColors(dst, src)
+local function packColors(t) local o = {}; for k, v in pairs(t) do o[k] = hexOf(v) end; return o end
+local function unpackColors(dst, src)
     if type(src) ~= "table" then return end
     for k in pairs(dst) do local c = colorOf(src[k]); if c then dst[k] = c end end
 end
 
-function saveSettings()
+local function saveSettings()
     local s = jsonEncode({
         v = 2, style = S.style, keybind = S.keybind, scale = S.scale, fullscreen = S.fullscreen, orb = S.orb, startHidden = S.startHidden,
         autoload = S.autoload, lastConfig = S.lastConfig, pos = S.pos, win = S.win, sounds = S.sounds, sfxVol = S.sfxVol,
@@ -243,13 +243,13 @@ end
 --#endregion settings
 --#region esp
 -- ESP (ported from DandyESP, Highlight based)
-ESP = {}
-espDirty = true
-animColors = { Rainbow = C(255, 0, 0), Halloween = MODE_PAIRS.Halloween[1], Christmas = MODE_PAIRS.Christmas[1] }   -- what each animated mode looks like right now
-rainbowSet = {}                                   -- [Highlight] = mode name
-rainbowSw = setmetatable({}, { __mode = "k" })    -- [swatch Frame] = mode name
+local ESP = {}
+local espDirty = true
+local animColors = { Rainbow = C(255, 0, 0), Halloween = MODE_PAIRS.Halloween[1], Christmas = MODE_PAIRS.Christmas[1] }   -- what each animated mode looks like right now
+local rainbowSet = {}                                   -- [Highlight] = mode name
+local rainbowSw = setmetatable({}, { __mode = "k" })    -- [swatch Frame] = mode name
 
-ITEM_GROUPS = {
+local ITEM_GROUPS = {
     { C(255, 128, 0),   { "Stopwatch", "SkillCheckCandy" } },
     { "Halloween",      { "Pumpkin", "DandyCorn" } },                 -- orange and purple
     { "Christmas",      { "ChristmasCookie", "Ornament" } },          -- red and green
@@ -266,7 +266,7 @@ ITEM_GROUPS = {
     { C(0, 0, 255),   { "StealthCandy", "SmokeBomb", "Cobweb" } },
 }
 
-Cfg = {
+local Cfg = {
     Enabled = false, Fill = true, FillTransparency = 0.75, OutlineTransparency = 0,
     AlwaysOnTop = true, UpdateRate = 0.2, MaxHighlights = 128,
     Categories = {
@@ -295,7 +295,7 @@ Cfg = {
             -- Shop = also the items for sale in the elevator's shop. ShopMode: "Normal" (like the same item in a room), "Custom" (one color, ShopColor), "Tapes" (by Cost against your SurvivalPoints)
     },
 }
-KNOWN_ITEMS = {}
+local KNOWN_ITEMS = {}
 for _, g in ipairs(ITEM_GROUPS) do
     for _, n in ipairs(g[2]) do
         Cfg.Categories.Items.Colors[n] = g[1]
@@ -304,13 +304,13 @@ for _, g in ipairs(ITEM_GROUPS) do
 end
 table.sort(KNOWN_ITEMS)
 ESP.Config = Cfg
-function deepcopy(t)
+local function deepcopy(t)
     if type(t) ~= "table" then return t end
     local o = {}
     for k, v in pairs(t) do o[k] = deepcopy(v) end
     return o
 end
-DEF = deepcopy(Cfg)   -- factory defaults (used by the "Default" / "Reset ESP Colors" buttons)
+local DEF = deepcopy(Cfg)   -- factory defaults (used by the "Default" / "Reset ESP Colors" buttons)
 
 do
     local holder = Instance.new("Folder")
@@ -771,8 +771,8 @@ end
 --#endregion esp
 --#region config-system
 -- Config system (features register serialize/apply; ESP is the first)
-STEP_SIZES = { Units = 1, Stars = 2.5, ["Half Stars"] = 1.25 }
-Speed = {
+local STEP_SIZES = { Units = 1, Stars = 2.5, ["Half Stars"] = 1.25 }
+local Speed = {
     Enabled = false, Mode = "Additive", Step = "Units", Floor = 0, Limit = 0, Cap = false, Auto = true,
     Add = { WalkAll = 0, WalkOdd = 0, WalkEven = 0, RunAll = 0, RunOdd = 0, RunEven = 0 },   -- speed units
     Mul = { WalkAll = 0, WalkOdd = 0, WalkEven = 0, RunAll = 0, RunOdd = 0, RunEven = 0 },   -- percent
@@ -784,11 +784,11 @@ Speed = {
 -- AutoRun = hold sprint for you on treadmill machines, stopping at RunStop stamina and starting again at RunResume.
 -- Peak = the highest stamina ever seen (used as the slider maximum).
 -- StopMode/ResumeMode: "Number" uses RunStop/RunResume, "Fraction" uses StopFrac/ResumeFrac (like "3/4") of your maximum stamina.
-Stam = { Infinite = false, ShowActual = false, Icon = true, AutoRun = false, RunStop = 20, RunResume = 100, Peak = 0,
+local Stam = { Infinite = false, ShowActual = false, Icon = true, AutoRun = false, RunStop = 20, RunResume = 100, Peak = 0,
     StopMode = "Number", ResumeMode = "Number", StopFrac = "1/8", ResumeFrac = "1/2" }
-STAM_MODES = { "Number", "Fraction" }
+local STAM_MODES = { "Number", "Fraction" }
 -- "3/4", "1/2", "50%" or "0.75" -> 0..1 (nil if it cannot be read)
-function stamParseFraction(txt)
+local function stamParseFraction(txt)
     txt = tostring(txt or ""):gsub("%s+", "")
     local pct = txt:match("^(%d*%.?%d+)%%$")
     if pct then return math.clamp(tonumber(pct) / 100, 0, 1) end
@@ -802,20 +802,20 @@ function stamParseFraction(txt)
     if dec then return math.clamp(dec, 0, 1) end
     return nil
 end
-function stamThreshold(mode, number, maxStam, frac)
+local function stamThreshold(mode, number, maxStam, frac)
     if mode == "Fraction" then return maxStam * (stamParseFraction(frac) or 0.5) end
     return number
 end
-function stamModeOk(m) return m == "Number" or m == "Fraction" end
+local function stamModeOk(m) return m == "Number" or m == "Fraction" end
 -- older configs stored "Max" / "Max/2" ... "Max/16"; those become fractions
-function stamLoadMode(mode)
+local function stamLoadMode(mode)
     if stamModeOk(mode) then return mode, nil end
     if mode == "Max" then return "Fraction", "1/1" end
     local d = tonumber(tostring(mode):match("^Max/(%d+)$"))
     if d and d > 0 then return "Fraction", "1/" .. d end
     return nil, nil
 end
-Features = {}
+local Features = {}
 do
     local function ser(v)
         if typeof(v) == "Color3" then return hexOf(v) end
@@ -889,9 +889,9 @@ do
 end
 
 
-function cfgPath(n) return CFG_DIR .. "/" .. n .. ".json" end
-function sanitize(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
-function listConfigs()
+local function cfgPath(n) return CFG_DIR .. "/" .. n .. ".json" end
+local function sanitize(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
+local function listConfigs()
     local out = {}
     for _, p in ipairs(listDir(CFG_DIR)) do
         local n = baseName(p)
@@ -900,13 +900,13 @@ function listConfigs()
     table.sort(out, function(a, b) return a:lower() < b:lower() end)
     return out
 end
-function saveConfig(name)
+local function saveConfig(name)
     local data = { version = 1, features = {} }
     for k, f in pairs(Features) do data.features[k] = f.serialize() end
     local js = jsonEncode(data)
     return js and writeFile(cfgPath(name), js) or false
 end
-function loadConfig(name)
+local function loadConfig(name)
     local data = jsonDecode(readFile(cfgPath(name)) or "")
     if type(data) ~= "table" or type(data.features) ~= "table" then return false end
     for k, f in pairs(Features) do
@@ -924,7 +924,7 @@ end
 --   and multipliers are folded into the game's own SpeedModifier / RunSpeedModifier. All of that happens BEFORE
 --   the Speed tab's own adjustments, so the two systems stack instead of fighting.
 ----------------------------------------------------------------------
-Fun = {
+local Fun = {
     Enabled = false,
     When = "Always",                    -- Always | While Not Idle | While Chased
     Default = true, Circle = false, Treadmill = false,
@@ -955,22 +955,22 @@ Fun = {
     Status = "Off",
     fx = {}, dazedUntil = 0,
 }
-FUN_WHEN = { "Always", "While Not Idle", "While Chased" }
-FUN_AUTO = { "Stat", "Manual" }
-FUN_SPEED = { "Game", "Skill Check Speed", "Manual" }
-FUN_REWARD_MODES = { "Skill Check Stat", "Flat", "Multiplier", "Energized" }
-FUN_REWARD_STATS = { "Skill Check Value", "Skill Check Speed" }
-FUN_PEN_MODES = { "Flat", "Multiplier", "Slow", "Kill" }
-FUN_STACK = { "Off", "On", "Limit" }
-FUN_COUNT = { "Chasing You", "On The Floor" }
-FUN_SCALE = { "Multiplier", "Flat" }
-FUN_SCALE_CHANCE = { "Flat", "Multiplier" }
-FUN_TIERS = { "I", "II", "III", "Custom" }
-FUN_SLOW_PCT = { I = 15, II = 25, III = 50 }              -- the game's Slow tiers
-FUN_ENERGIZED_PCT = { I = 25, II = 50, III = 75 }         -- the game's Energized tiers
-FUN_TIER_NUM = { I = 1, II = 2, III = 3 }
+local FUN_WHEN = { "Always", "While Not Idle", "While Chased" }
+local FUN_AUTO = { "Stat", "Manual" }
+local FUN_SPEED = { "Game", "Skill Check Speed", "Manual" }
+local FUN_REWARD_MODES = { "Skill Check Stat", "Flat", "Multiplier", "Energized" }
+local FUN_REWARD_STATS = { "Skill Check Value", "Skill Check Speed" }
+local FUN_PEN_MODES = { "Flat", "Multiplier", "Slow", "Kill" }
+local FUN_STACK = { "Off", "On", "Limit" }
+local FUN_COUNT = { "Chasing You", "On The Floor" }
+local FUN_SCALE = { "Multiplier", "Flat" }
+local FUN_SCALE_CHANCE = { "Flat", "Multiplier" }
+local FUN_TIERS = { "I", "II", "III", "Custom" }
+local FUN_SLOW_PCT = { I = 15, II = 25, III = 50 }              -- the game's Slow tiers
+local FUN_ENERGIZED_PCT = { I = 25, II = 50, III = 75 }         -- the game's Energized tiers
+local FUN_TIER_NUM = { I = 1, II = 2, III = 3 }
 
-function funIn(list, v) for _, x in ipairs(list) do if x == v then return true end end; return false end
+local function funIn(list, v) for _, x in ipairs(list) do if x == v then return true end end; return false end
 
 -- adds an effect to a stacking group ("reward", "penalty", "mag") and applies the stacking rule
 function Fun.add(group, e, dur)
@@ -1014,7 +1014,7 @@ function Fun.activeCount() local n = 0; local now = os.clock(); for _, e in ipai
 --#endregion fun-settings
 --#region movement-engine
 -- Movement engine (reads the player's Stats folder, writes Humanoid.WalkSpeed)
-SP = { last = nil, learned = {}, peak = {}, flag = nil, lastTrust = nil, onFlagUI = nil }
+local SP = { last = nil, learned = {}, peak = {}, flag = nil, lastTrust = nil, onFlagUI = nil }
 do
     local RS = game:GetService("ReplicatedStorage")
     local statsCache, statsPath = nil, ""
@@ -2407,7 +2407,7 @@ end
 -- All skill checks listen to one InputAction ("SkillCheckTap"); firing its Pressed
 -- signal is the same as pressing the key (no window focus, no latency).
 ----------------------------------------------------------------------
-Auto = {
+local Auto = {
     Default = false, Circle = false, Treadmill = false, Swimmy = false, Instant = false,
     InstantKinds = { default = true, circle = true, treadmill = true },   -- which machine types Instant Calibration Success answers; the others are played normally
     Snap = true,            -- nudge the marker/circle to the exact middle of gold before tapping
@@ -3557,17 +3557,17 @@ end
 -- (the main script is close to Luau's 200-locals limit).
 ----------------------------------------------------------------------
 Fun.Pur = (function()
-P = {}
-PathfindingService = game:GetService("PathfindingService")
-getasset = getcustomasset or getsynasset
-httpReq = request or http_request or (syn and syn.request) or (http and http.request)
+local P = {}
+local PathfindingService = game:GetService("PathfindingService")
+local getasset = getcustomasset or getsynasset
+local httpReq = request or http_request or (syn and syn.request) or (http and http.request)
 
-DIR = ROOT_DIR .. "/Pursuer"
-IMG_DIR, SND_DIR, CACHE_DIR = DIR .. "/Images", DIR .. "/Sounds", DIR .. "/Cache"
+local DIR = ROOT_DIR .. "/Pursuer"
+local IMG_DIR, SND_DIR, CACHE_DIR = DIR .. "/Images", DIR .. "/Sounds", DIR .. "/Cache"
 makeDir(DIR); makeDir(IMG_DIR); makeDir(SND_DIR); makeDir(CACHE_DIR)
 
 -- Settings
-LISTS = {
+local LISTS = {
     ImageMode = { "Static", "Sprite Sheet", "Frame List" },
     Billboard = { "Y Only", "Full", "Off" },
     WallMode  = { "Solid (Pathfinds)", "Through Walls" },
@@ -3582,7 +3582,7 @@ LISTS = {
 }
 P.LISTS = LISTS
 
-D = {
+local D = {
     Enabled = false, Kill = true, HitScale = 1,
     ImageMode = "Static", ImageSrc = "", FrameList = "", Cols = 4, Rows = 4, FrameCount = 16, FPS = 12,
     Billboard = "Y Only", Pixelated = true, Width = 6, Height = 6, FeetOnGround = true, Hover = 3,
@@ -3606,10 +3606,10 @@ D = {
     After = false, AfterRate = 0.07, AfterFade = 0.45, AfterStart = 0.5, AfterDashOnly = false,
 }
 P.Defaults = D
-Cfg = copyT(D)
+local Cfg = copyT(D)
 P.Cfg = Cfg
 
-RANGES = {
+local RANGES = {
     PanicPercent = { 0, 500 }, PanicFlat = { 0, 100 }, PanicSet = { 1, 200 }, SuppressPercent = { 0, 100 }, SuppressFlat = { 0, 200 },
     DecodeFlat = { 0, 100 }, DecodePercent = { 0, 100 }, DecodeSet = { 0, 200 },
     HitScale = { 0.2, 3 }, Cols = { 1, 32 }, Rows = { 1, 32 }, FrameCount = { 1, 1024 }, FPS = { 1, 60 },
@@ -3623,7 +3623,7 @@ RANGES = {
     AfterRate = { 0.02, 0.5 }, AfterFade = { 0.1, 2 }, AfterStart = { 0.05, 1 },
 }
 P.RANGES = RANGES
-TEXTKEYS = { "ImageSrc", "FrameList", "MusicSrc", "SpawnSrc", "DeathSrc", "DashWarnSrc", "DashStartSrc", "DashLoopSrc" }
+local TEXTKEYS = { "ImageSrc", "FrameList", "MusicSrc", "SpawnSrc", "DeathSrc", "DashWarnSrc", "DashStartSrc", "DashLoopSrc" }
 
 function P.sanitize()
     for k, r in pairs(RANGES) do
@@ -3653,16 +3653,16 @@ Features.pursuer = {
 }
 
 -- Asset sources (rbxassetid / link / file in TonyScriptPalace/Pursuer/Images or /Sounds)
-IMG_EXT = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
-SND_EXT = { mp3 = true, ogg = true, wav = true, flac = true }
-memo = {}
+local IMG_EXT = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
+local SND_EXT = { mp3 = true, ogg = true, wav = true, flac = true }
+local memo = {}
 
-function hashS(s)
+local function hashS(s)
     local h = 5381
     for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
     return string.format("%08x%x", h, #s)
 end
-function normalizeUrl(u)
+local function normalizeUrl(u)
     u = trim(u)
     local id = u:match("drive%.google%.com/file/d/([%w_%-]+)") or u:match("drive%.google%.com/open%?id=([%w_%-]+)")
     if id then return "https://drive.google.com/uc?export=download&id=" .. id end
@@ -3674,7 +3674,7 @@ function normalizeUrl(u)
     end
     return u
 end
-function sniff(b, kind)
+local function sniff(b, kind)
     if kind == "img" then
         if b:sub(1, 4) == "\137PNG" then return "png" end
         if b:sub(1, 3) == "\255\216\255" then return "jpg" end
@@ -3693,11 +3693,11 @@ function sniff(b, kind)
     if b1 == 0xFF and b2 and bit32.band(b2, 0xE0) == 0xE0 then return "mp3" end
     return nil
 end
-function isHtml(b)
+local function isHtml(b)
     local h = b:sub(1, 300):lower()
     return h:find("<!doctype", 1, true) ~= nil or h:find("<html", 1, true) ~= nil
 end
-function fetchBody(url)
+local function fetchBody(url)
     if not httpReq then return nil, "This executor has no request()." end
     local ok, res = pcall(httpReq, { Url = url, Method = "GET", Headers = { ["User-Agent"] = "Mozilla/5.0" } })
     if not ok then return nil, "Request failed: " .. tostring(res) end
@@ -3706,13 +3706,13 @@ function fetchBody(url)
     if code >= 400 then return nil, "Server answered HTTP " .. code .. " (is the link public?)" end
     return res.Body or "", nil
 end
-function cachedFile(key)
+local function cachedFile(key)
     for _, e in ipairs({ "png", "jpg", "webp", "bmp", "mp3", "ogg", "wav", "flac" }) do
         local p = CACHE_DIR .. "/" .. key .. "." .. e
         if fileExists(p) then return p end
     end
 end
-function findFile(kind, name)
+local function findFile(kind, name)
     name = tostring(name):gsub("\\", "/")
     if fileExists(name) then return name end
     local dir = (kind == "img") and IMG_DIR or SND_DIR
@@ -3736,7 +3736,7 @@ function P.listFiles(kind)
 end
 
 -- cb(asset) or cb(nil, errorMessage). Results are remembered, so a source is only fetched once.
-function resolve(kind, src, cb)
+local function resolve(kind, src, cb)
     src = trim(src or "")
     if src == "" then return cb(nil, "empty") end
     local mk = kind .. "|" .. src
@@ -3775,7 +3775,7 @@ end
 P.resolve = resolve
 
 -- Image (single picture, sprite sheet or list of frames)
-img = { key = nil, tok = 0, list = {}, err = nil, busy = false }
+local img = { key = nil, tok = 0, list = {}, err = nil, busy = false }
 function P.imageState()
     local key = Cfg.ImageMode .. "|" .. Cfg.ImageSrc .. "|" .. Cfg.FrameList
     if key ~= img.key then
@@ -3821,8 +3821,8 @@ function P.reload()
     img.key = nil
 end
 
-tintKey, tintVal = nil, WHITE
-function tint()
+local tintKey, tintVal = nil, WHITE
+local function tint()
     if tintKey ~= Cfg.Tint then tintKey = Cfg.Tint; tintVal = colorOf(Cfg.Tint) or WHITE end
     return tintVal
 end
@@ -3876,7 +3876,7 @@ end
 
 -- State
 -- phase: off | waiting | flash | chase | dead | fading | gone
-E = {
+local E = {
     phase = "off", alpha = 0, pos = Vector3.zero, prev = Vector3.zero, face = Vector3.new(0, 0, 1),
     t0 = 0, spawnedFloor = -1, forced = false, dist = 0, speedNow = 0, dash = "idle", dashT = 0, dashDist = 0, dashDir = Vector3.zero,
     nextDash = 0, shake = 0, afterT = 0, nAfter = 0, timer = 120, timerOn = false, deadAt = 0,
@@ -3884,34 +3884,34 @@ E = {
     why = "Off", hudUntil = 0, hudTxt = nil,
 }
 P.E = E
-F = { id = 0, floor = nil, active = nil, sawOpen = false, closed = false, joinedMid = false, t0 = 0, open = false }
+local F = { id = 0, floor = nil, active = nil, sawOpen = false, closed = false, joinedMid = false, t0 = 0, open = false }
 P.F = F
 
-rp = RaycastParams.new()
+local rp = RaycastParams.new()
 rp.FilterType = Enum.RaycastFilterType.Exclude
 rp.IgnoreWater = true
 pcall(function() rp.RespectCanCollide = true end)
 
-function infoVal(name)
+local function infoVal(name)
     local i = Workspace:FindFirstChild("Info")
     local v = i and i:FindFirstChild(name)
     if v and v:IsA("ValueBase") then return v.Value end
 end
-function me()
+local function me()
     local ch = LP.Character
     local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
     local hum = ch and ch:FindFirstChildOfClass("Humanoid")
     if not (ch and hrp and hum) then return nil end
     return ch, hrp, hum, ch:FindFirstChild("Stats"), hrp.Position.Y - hrp.Size.Y / 2 - hum.HipHeight
 end
-function suppressed()
+local function suppressed()
     local i = Workspace:FindFirstChild("Info")
     local cm = i and i:FindFirstChild("CardModifiers")
     return cm ~= nil and cm:FindFirstChild("MonsterPanicReduction") ~= nil    -- the Suppression card
 end
 -- speed in panic mode. The Suppression card can lower the boost: by a flat amount (in the boost's own unit) or by a percentage of it.
-function panicOn() return Cfg.PanicMode ~= "Off" and infoVal("Panic") == true end
-function panicAmount(base)
+local function panicOn() return Cfg.PanicMode ~= "Off" and infoVal("Panic") == true end
+local function panicAmount(base)
     if suppressed() then
         if Cfg.SuppressMode == "Lower By Flat Amount" then return math.max(base - Cfg.SuppressFlat, 0)
         elseif Cfg.SuppressMode == "Lower By Percent" then return base * (1 - Cfg.SuppressPercent / 100) end
@@ -3931,14 +3931,14 @@ function P.panicAdjust(spd, dash)
     return spd
 end
 
-function ensureFolder()
+local function ensureFolder()
     if not E.folder then
         E.folder = Instance.new("Folder"); E.folder.Name = "TSP_Pursuer"
     end
     local want = Workspace.CurrentCamera or Workspace
     if E.folder.Parent ~= want then E.folder.Parent = want end
 end
-function refreshFilter()
+local function refreshFilter()
     local list = { E.folder }
     for _, n in ipairs({ "InGamePlayers", "Players" }) do
         local f = Workspace:FindFirstChild(n)
@@ -3958,7 +3958,7 @@ function refreshFilter()
 end
 
 -- Sounds
-function playOnce(kind, src, vol)
+local function playOnce(kind, src, vol)
     resolve("snd", src, function(a)
         if not a or not alive or not E.folder then return end
         local s = Instance.new("Sound")
@@ -3968,24 +3968,24 @@ function playOnce(kind, src, vol)
         task.delay(30, function() if s.Parent then s:Destroy() end end)
     end)
 end
-function stopMusic()
+local function stopMusic()
     if E.music then pcall(function() E.music.sound:Destroy() end); E.music = nil end
 end
 
 -- Dash sounds: "warn" (while it shakes), "start" (once, when the lunge begins) and "loop" (for as long as it is dashing).
 -- Each one has a token, so a sound that is still being fetched when it is no longer wanted is thrown away instead of played late.
 E.dSnd, E.dTok, E.dPend, E.dErr, E.dashPrev = {}, {}, {}, {}, "idle"
-function stopDashSound(slot)
+local function stopDashSound(slot)
     E.dTok[slot] = (E.dTok[slot] or 0) + 1
     E.dPend[slot] = nil
     local s = E.dSnd[slot]
     if s then pcall(function() s:Destroy() end); E.dSnd[slot] = nil end
 end
-function stopDashSounds()
+local function stopDashSounds()
     for _, k in ipairs({ "warn", "start", "loop" }) do stopDashSound(k) end
     E.dashPrev = "idle"
 end
-function playDashSound(slot, src, vol, looped)
+local function playDashSound(slot, src, vol, looped)
     if trim(src) == "" then return end
     stopDashSound(slot)
     local tok = E.dTok[slot]
@@ -4008,7 +4008,7 @@ function playDashSound(slot, src, vol, looped)
     end)
 end
 -- runs every frame: starts and stops the three dash sounds to match what the dash is doing
-function syncDashSounds()
+local function syncDashSounds()
     local chasing = E.phase == "chase" and Cfg.Dash
     local st = chasing and E.dash or "idle"
     local prev = E.dashPrev
@@ -4032,7 +4032,7 @@ function syncDashSounds()
         stopDashSound("loop")
     end
 end
-function updateMusic()
+local function updateMusic()
     local want = Cfg.Music and trim(Cfg.MusicSrc) ~= "" and E.body ~= nil and (E.phase == "flash" or E.phase == "chase" or E.phase == "fading")
     if not want then if E.music then stopMusic() end; return end
     local key = Cfg.MusicSrc .. "|" .. tostring(Cfg.Music3D)
@@ -4063,7 +4063,7 @@ function updateMusic()
 end
 
 -- Body (an invisible part carrying the picture on a SurfaceGui, so walls hide it like any other object)
-function makeBody()
+local function makeBody()
     local part = Instance.new("Part")
     part.Name = "PursuerBody"; part.Anchored = true; part.CanCollide = false; part.CanTouch = false; part.CanQuery = false
     part.CastShadow = false; part.Transparency = 1; part.Size = Vector3.new(Cfg.Width, Cfg.Height, 0.05)
@@ -4080,22 +4080,22 @@ function makeBody()
     part.Parent = E.folder
     return b
 end
-function killBody()
+local function killBody()
     stopMusic()
     stopDashSounds()
     if E.body then pcall(function() E.body.part:Destroy() end); E.body = nil end
 end
 
-function bodyCenter()
+local function bodyCenter()
     local h = Cfg.Height
     return Vector3.new(E.pos.X, E.pos.Y + (Cfg.FeetOnGround and h / 2 or Cfg.Hover), E.pos.Z)
 end
-function emissiveOn()
+local function emissiveOn()
     if Cfg.Emissive == "Always" then return true end
     return Cfg.Emissive == "During Blackouts" and infoVal("BlackOut") == true
 end
 
-function updateBody(t)
+local function updateBody(t)
     local b = E.body
     if not b then return end
     local w, h = Cfg.Width, Cfg.Height
@@ -4133,7 +4133,7 @@ function updateBody(t)
     if glow then b.light.Color = tint(); b.light.Brightness = 2 * E.alpha; b.light.Range = math.max(w, h) * 3 + 8 end
 end
 
-function afterimage()
+local function afterimage()
     local b = E.body
     if not b or E.nAfter >= 24 then return end
     local c = b.part:Clone()
@@ -4161,7 +4161,7 @@ function afterimage()
 end
 
 -- Floor tracking (the elevator opens, you walk out, it closes)
-function elevatorOpen()
+local function elevatorOpen()
     local el = Workspace:FindFirstChild("Elevators")
     if not el then return false end
     for _, e in ipairs(el:GetChildren()) do
@@ -4170,7 +4170,7 @@ function elevatorOpen()
     end
     return false
 end
-function trackFloor(t, active)
+local function trackFloor(t, active)
     local fl = infoVal("Floor")
     local open = elevatorOpen()
     if F.floor ~= fl or (active and not F.active) then
@@ -4188,7 +4188,7 @@ function trackFloor(t, active)
 end
 
 -- keeps the pursuer out of the elevator room (the game's own MonsterBlocker box)
-function avoidElevator()
+local function avoidElevator()
     local el = Workspace:FindFirstChild("Elevators")
     if not el then return end
     for _, e in ipairs(el:GetChildren()) do
@@ -4209,7 +4209,7 @@ end
 
 -- Movement
 -- speed while you are extracting (choosing a mode here replaces the pause)
-function decodeAdjust(spd)
+local function decodeAdjust(spd)
     if not E.decoding or spd <= 0 then return spd end      -- a pursuer that is standing still (stops near you) stays still
     local m = Cfg.DecodeSlow
     if m == "Slow By Flat Amount" then return math.max(spd - Cfg.DecodeFlat, 0)
@@ -4218,7 +4218,7 @@ function decodeAdjust(spd)
     return spd
 end
 
-function speedFor(d)
+local function speedFor(d)
     local m, mode = 1, Cfg.SpeedMode
     local span = math.max(Cfg.FarDist - Cfg.NearDist, 0.1)
     local k = math.clamp((d - Cfg.NearDist) / span, 0, 1)
@@ -4230,10 +4230,10 @@ function speedFor(d)
 end
 function P.currentSpeed() return E.speedNow end
 
-function radius() return 1.2 end      -- collision body is small and fixed: the picture can be huge, but doorways are narrow
+local function radius() return 1.2 end      -- collision body is small and fixed: the picture can be huge, but doorways are narrow
 
 -- moves along dir (flat unit) for dist studs, sliding along walls. Returns the movement and whether a wall stopped it.
-function slideStep(dir, dist)
+local function slideStep(dir, dist)
     local origin = Vector3.new(E.pos.X, E.pos.Y + 3, E.pos.Z)
     local reach = dist + radius()
     local hit = Workspace:Raycast(origin, dir * reach, rp)
@@ -4249,7 +4249,7 @@ function slideStep(dir, dist)
     return slide * dist * 0.9, true
 end
 
-function clearLine(hrp)
+local function clearLine(hrp)
     local y = hrp.Position.Y
     local from = Vector3.new(E.pos.X, y, E.pos.Z)
     local to = hrp.Position
@@ -4263,7 +4263,7 @@ function clearLine(hrp)
     return true
 end
 
-function requestPath(goal)
+local function requestPath(goal)
     if E.pathBusy then return end
     E.pathBusy = true
     E.pathGoal = goal
@@ -4287,7 +4287,7 @@ function requestPath(goal)
         else E.path = nil end
     end)
 end
-function pathDir(t, goal)
+local function pathDir(t, goal)
     local stale = (E.path == nil and t - E.pathAt > 0.5) or (t - E.pathAt > 1.2)
     local moved = E.pathGoal and (goal - E.pathGoal).Magnitude > 6 and t - E.pathAt > 0.35
     if (stale or moved) and not E.pathBusy then requestPath(goal) end
@@ -4302,7 +4302,7 @@ function pathDir(t, goal)
     return nil
 end
 
-function updateY(dt, myFeet)
+local function updateY(dt, myFeet)
     if Cfg.Vertical == "Fly Up And Down" then
         -- it rises and falls toward your height at its own speed (not a snap), only while it is actually moving
         if E.phase ~= "chase" or E.dash == "dashing" or E.speedNow <= 0.01 then return end
@@ -4322,7 +4322,7 @@ function updateY(dt, myFeet)
     E.pos = Vector3.new(E.pos.X, E.pos.Y + math.clamp(ty - E.pos.Y, -maxd, maxd), E.pos.Z)
 end
 
-function killMe(t, hum)
+local function killMe(t, hum)
     if E.phase == "dead" then return end
     E.phase, E.deadAt = "dead", t
     E.speedNow = 0
@@ -4334,7 +4334,7 @@ function killMe(t, hum)
     if Cfg.DeathSound and trim(Cfg.DeathSrc) ~= "" then playOnce("snd", Cfg.DeathSrc, Cfg.DeathVol) end
 end
 
-function touching(hrp)
+local function touching(hrp)
     local p, q = E.prev, E.pos
     local a, b, c = Vector2.new(p.X, p.Z), Vector2.new(q.X, q.Z), Vector2.new(hrp.Position.X, hrp.Position.Z)
     local ab = b - a
@@ -4346,7 +4346,7 @@ function touching(hrp)
     return y >= bottom - 3 and y <= bottom + Cfg.Height + 1.5
 end
 
-function chaseStep(dt, t, hrp, myFeet, paused)
+local function chaseStep(dt, t, hrp, myFeet, paused)
     local tp = hrp.Position
     local flat = Vector3.new(tp.X - E.pos.X, 0, tp.Z - E.pos.Z)
     local dist = flat.Magnitude
@@ -4429,9 +4429,9 @@ end
 -- The game draws the eye and the little counter from a number on your player (ChaseCount). We add one to it while the
 -- pursuer is chasing, so the game's own UI shows and counts it exactly like a Twisted.
 ----------------------------------------------------------------------
-SPOT_PATH = { ["Spotted"] = "Sounds.UI.Alerts.Spotted", ["Spotted 2"] = "Sounds.UI.Alerts.Spotted2" }
-audioMod = nil
-function playSpotted()
+local SPOT_PATH = { ["Spotted"] = "Sounds.UI.Alerts.Spotted", ["Spotted 2"] = "Sounds.UI.Alerts.Spotted2" }
+local audioMod
+local function playSpotted()
     local ok = pcall(function()
         audioMod = audioMod or require(game:GetService("ReplicatedStorage"):WaitForChild("SharedUtils", 2):WaitForChild("Audio", 2))
         audioMod:PlayOne(SPOT_PATH[Cfg.SpotVariant] or SPOT_PATH.Spotted)
@@ -4449,10 +4449,10 @@ function playSpotted()
     end)
 end
 
-countConn = nil
-function chaseAttr() return tonumber(LP:GetAttribute("ChaseCount")) or 0 end
-function writeCount(v) E.lastSet = v; LP:SetAttribute("ChaseCount", v) end
-function setCounted(want)
+local countConn
+local function chaseAttr() return tonumber(LP:GetAttribute("ChaseCount")) or 0 end
+local function writeCount(v) E.lastSet = v; LP:SetAttribute("ChaseCount", v) end
+local function setCounted(want)
     if want == (E.counted == true) then return end
     E.counted = want
     if want then
@@ -4495,7 +4495,7 @@ function P.despawn(instant)
     E.phase = "fading"
 end
 
-function beginChase(t)
+local function beginChase(t)
     E.phase, E.alpha = "chase", 1
     if Cfg.SpotSound then playSpotted() end      -- the "a Twisted has spotted you" sound
     E.nextDash = t + Cfg.DashCdMin + math.random() * (Cfg.DashCdMax - Cfg.DashCdMin)
@@ -4504,9 +4504,9 @@ function beginChase(t)
 end
 
 -- Timer hud (like the Pizza Time bar)
-hud = nil
-function hudDestroy() if hud then pcall(function() hud.gui:Destroy() end); hud = nil end end
-function hudUpdate(show, text, frac, urgent)
+local hud
+local function hudDestroy() if hud then pcall(function() hud.gui:Destroy() end); hud = nil end end
+local function hudUpdate(show, text, frac, urgent)
     if not show then if hud then hud.gui.Enabled = false end; return end
     if not hud then
         local g = Instance.new("ScreenGui")
@@ -4528,14 +4528,14 @@ function hudUpdate(show, text, frac, urgent)
     hud.lab.TextColor3 = col; hud.bar.BackgroundColor3 = col
     if urgent then hud.root.Position = UDim2.new(0.5, math.random(-2, 2), 0, 14 + math.random(-2, 2)) else hud.root.Position = UDim2.new(0.5, 0, 0, 14) end
 end
-function fmtTime(s)
+local function fmtTime(s)
     s = math.max(0, math.ceil(s))
     return string.format("%d:%02d", math.floor(s / 60), s % 60)
 end
 
 -- Main loop
-BIND = "TSP_Pursuer"
-function step(dt)
+local BIND = "TSP_Pursuer"
+local function step(dt)
     if not alive then return end
     dt = math.min(dt, 0.1)
     local t = os.clock()
@@ -4662,11 +4662,11 @@ function P.active() return E.phase == "flash" or E.phase == "chase" or E.phase =
 P.say = function() end      -- the page sets this to the hub's toast
 
 -- Saved pursuers (TonyScriptPalace/Pursuer/Presets/<name>.json)
-PRESET_DIR = DIR .. "/Presets"
+local PRESET_DIR = DIR .. "/Presets"
 makeDir(PRESET_DIR)
 P.presetName = ""
-function presetClean(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
-function presetPath(n) return PRESET_DIR .. "/" .. presetClean(n) .. ".json" end
+local function presetClean(n) return (trim(n):gsub("[^%w%-_ ]", "_")) end
+local function presetPath(n) return PRESET_DIR .. "/" .. presetClean(n) .. ".json" end
 function P.presetClean(n) return presetClean(n) end
 function P.presetExists(n) n = presetClean(n); return n ~= "" and fileExists(presetPath(n)) end
 function P.listPresets()
@@ -4896,37 +4896,37 @@ end
 --#endregion ctrllock-engine
 --#region ui-core
 -- UI core
-UI = { tabs = {}, cats = {}, current = "esp", curCat = "gameplay", catSel = {}, visible = not S.startHidden, sel = {} }   -- sel[tab id] = key of the section picked in that tab. cats = the top tabs, tabs = the sub-tabs listed down the side (tab.cat says which top tab they belong to), catSel[cat id] = the sub-tab last open in that top tab
-T = nil -- active style tokens
-gui = nil
-guiConns, popup, popupClose = {}, nil, nil
-activeDrag, listening = nil, nil
-buildGui = nil
-builders = {}
-liveList = {}   -- functions that refresh live text on the current page (5x per second)
+local UI = { tabs = {}, cats = {}, current = "esp", curCat = "gameplay", catSel = {}, visible = not S.startHidden, sel = {} }   -- sel[tab id] = key of the section picked in that tab. cats = the top tabs, tabs = the sub-tabs listed down the side (tab.cat says which top tab they belong to), catSel[cat id] = the sub-tab last open in that top tab
+local T                                   -- active style tokens
+local gui, Win, Overlay, Content, StatusLbl, Orb, Grip, UIScaleObj, Host, Rail, PinPane
+local guiConns, popup, popupClose = {}, nil, nil
+local activeDrag, listening = nil, nil
+local buildGui, renderPage, applyLayout, toast, Destroy
+local builders = {}
+local liveList = {}   -- functions that refresh live text on the current page (5x per second)
 
-F_AERO = { reg = Enum.Font.SourceSans, semi = Enum.Font.SourceSansSemibold, bold = Enum.Font.SourceSansBold }
-F_XMB  = { reg = Enum.Font.Gotham, semi = Enum.Font.GothamMedium, bold = Enum.Font.GothamBold }
-F_DANDY = { reg = Enum.Font.SourceSansSemibold, semi = Enum.Font.FredokaOne, bold = Enum.Font.FredokaOne }
-F_XP   = { reg = Enum.Font.Arial, semi = Enum.Font.Arial, bold = Enum.Font.ArialBold }   -- closest thing to Tahoma
-AL, AC, AR = Enum.TextXAlignment.Left, Enum.TextXAlignment.Center, Enum.TextXAlignment.Right
+local F_AERO = { reg = Enum.Font.SourceSans, semi = Enum.Font.SourceSansSemibold, bold = Enum.Font.SourceSansBold }
+local F_XMB  = { reg = Enum.Font.Gotham, semi = Enum.Font.GothamMedium, bold = Enum.Font.GothamBold }
+local F_DANDY = { reg = Enum.Font.SourceSansSemibold, semi = Enum.Font.FredokaOne, bold = Enum.Font.FredokaOne }
+local F_XP   = { reg = Enum.Font.Arial, semi = Enum.Font.Arial, bold = Enum.Font.ArialBold }   -- closest thing to Tahoma
+local AL, AC, AR = Enum.TextXAlignment.Left, Enum.TextXAlignment.Center, Enum.TextXAlignment.Right
 
-function gconnect(sig, fn) local c = sig:Connect(fn); guiConns[#guiConns + 1] = c; return c end
-function New(cls, props, parent)
+local function gconnect(sig, fn) local c = sig:Connect(fn); guiConns[#guiConns + 1] = c; return c end
+local function New(cls, props, parent)
     local o = Instance.new(cls)
     for k, v in pairs(props or {}) do o[k] = v end
     if parent then o.Parent = parent end
     return o
 end
-function corner(o, r) return New("UICorner", { CornerRadius = UDim.new(0, r) }, o) end
-function stroke(o, col, th, tr)
+local function corner(o, r) return New("UICorner", { CornerRadius = UDim.new(0, r) }, o) end
+local function stroke(o, col, th, tr)
     return New("UIStroke", { Color = col, Thickness = th or 1, Transparency = tr or 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, o)
 end
-function grad(o, c0, c1, rot) return New("UIGradient", { Color = ColorSequence.new(c0, c1), Rotation = rot or 90 }, o) end
-function tween(o, props, t)
+local function grad(o, c0, c1, rot) return New("UIGradient", { Color = ColorSequence.new(c0, c1), Rotation = rot or 90 }, o) end
+local function tween(o, props, t)
     TweenService:Create(o, TweenInfo.new(t or 0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
 end
-function gloss(parent, radius, a0, a1)
+local function gloss(parent, radius, a0, a1)
     local g = New("Frame", { Name = "Gloss", BackgroundColor3 = WHITE, BorderSizePixel = 0,
         Position = UDim2.new(0, 3, 0, 2), Size = UDim2.new(1, -6, 0.48, 0), ZIndex = 2 }, parent)
     corner(g, math.max(radius - 2, 2))
@@ -6398,7 +6398,7 @@ function resetESPColors()
     espDirty = true
 end
 
-local function buildESPPage()
+function buildESPPage()
     local cats = Cfg.Categories
     local function tg(text, tbl, key)
         return { t = "toggle", text = text, get = function() return tbl[key] end, set = function(v) tbl[key] = v; espDirty = true end }
@@ -6837,9 +6837,9 @@ end
 --#endregion page-twistedvis
 
 --#region page-movement
-local function num(n) return ((string.format("%.2f", n):gsub("%.?0+$", ""))) end
+function num(n) return ((string.format("%.2f", n):gsub("%.?0+$", ""))) end
 
-local function buildMovementPage()
+function buildMovementPage()
     local additive = Speed.Mode == "Additive"
     local stepSize = STEP_SIZES[Speed.Step] or 1
     local sdec = (stepSize == 1 and 0) or (stepSize == 2.5 and 1) or 2
@@ -6962,10 +6962,10 @@ function UI.buildCameraPage()
     }
 end
 
-local cfgState = { name = "", box = nil }
+cfgState = { name = "", box = nil }
 --#endregion page-movement
 --#region page-configs
-local function buildConfigsPage()
+function buildConfigsPage()
     if cfgState.name == "" and S.lastConfig ~= "" then cfgState.name = S.lastConfig end
     local function curName()
         local raw = cfgState.box and cfgState.box.Text or cfgState.name
@@ -7020,25 +7020,25 @@ end
 
 --#endregion page-configs
 --#region page-appearance
-local buildAppearancePage
+buildAppearancePage = nil
 do
-local STYLE_NAMES = { dandy = "Dandy's World", aero = "Frutiger Aero", xmb = "XMB / PlayStation", xp = "Windows XP Luna" }
-local STYLE_BY_NAME = {}
+STYLE_NAMES = { dandy = "Dandy's World", aero = "Frutiger Aero", xmb = "XMB / PlayStation", xp = "Windows XP Luna" }
+STYLE_BY_NAME = {}
 for k, v in pairs(STYLE_NAMES) do STYLE_BY_NAME[v] = k end
-local STYLE_BLURB = {
+STYLE_BLURB = {
     dandy = "The default. Dark striped panels, thick black outlines, yellow headers and orange sliders, like the game's own menus.",
     aero = "Glossy glass, bubbles and soft gradients. Everything is lowercase, because it's relaxed like that.",
     xmb = "The PlayStation cross media bar: moving waves, Proper Case and PS3 sounds.",
     xp = "Windows XP Luna: blue title bar, task pane groups and the real XP sounds. Nostalgia included.",
 }
-local STYLE_DATA = {   -- skins that can be recolored
+STYLE_DATA = {   -- skins that can be recolored
     dandy = { order = DANDY.order, presets = DANDY.presets, keys = DANDY.keys },
     aero  = { order = AERO_ORDER,  presets = AERO_PRESETS,  keys = AERO_KEYS },
     xmb   = { order = XMB_ORDER,   presets = XMB_PRESETS,   keys = XMB_KEYS },
     xp    = { order = XP_ORDER,    presets = XP_PRESETS,    keys = XP_KEYS },
 }
 
-local function applyPreset(name)
+function applyPreset(name)
     local d = STYLE_DATA[S.style]
     local p = d and d.presets[name]
     if not p then return end
@@ -7046,7 +7046,7 @@ local function applyPreset(name)
     saveSettings(); buildGui()
 end
 
-local function resetAppearance()
+function resetAppearance()
     S.scale, S.fullscreen, S.orb, S.pos, S.keybind, S.startHidden = 1, false, true, nil, "RightShift", false
     S.sounds, S.sfxVol = true, 1
     S.win = defaultWin()
@@ -7148,9 +7148,9 @@ end
 end
 --#endregion page-appearance
 --#region page-world
-local worldNames = ""     -- what is typed in the World tab's "Extra Names" box
+worldNames = ""     -- what is typed in the World tab's "Extra Names" box
 -- game GUI tweaks (things drawn on your screen, rather than things in the map)
-local function buildScreenPage()
+function buildScreenPage()
     return {
         { title = "Adblocker", controls = {
             { t = "text", text = "Twisted Vee throws fake ad popups at you while she chases you. This blocks them so they never show up (and never make their sound). Turn it off and they come back. It only blocks the popups. The slowness her ability gives you still happens."},
@@ -7169,7 +7169,7 @@ local function buildScreenPage()
     }
 end
 
-local function buildWorldPage()
+function buildWorldPage()
     return {
         { title = "Noclip", controls = {
             { t = "text", text = "Noclip here works on the map, not on you. With Everything Except Floors on (the default), it turns off collision for walls, props, machines and doors all over the map, not just the room you're in (the elevator too). Floors and stairs stay solid, and so do all characters (you, other players and Twisteds), so you won't fall through the world. The fake elevator in Labs gets turned off too, but the real one is left alone. Smart Floors (needs Everything Except Floors) also keeps solid any flat surface level with your feet, even if the game gave it a weird name. It finds them from where you stand, so it follows you between levels. Everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
@@ -7206,7 +7206,7 @@ end
 
 --#endregion page-world
 --#region page-automation
-local function buildAutomationPage()
+function buildAutomationPage()
     local smax = math.max(150, math.ceil(Stam.Peak / 5) * 5)      -- Auto Run slider maximum: the highest stamina seen so far
     local function fracInput(label, key)       -- a box you type a fraction into: 3/4, 1/2, 50% or 0.75
         return { t = "input", text = label, placeholder = "e.g. 3/4, 1/2, 50%", get = function() return Stam[key] end,
@@ -7694,7 +7694,7 @@ function Fun.Pur.sections()
     }
 end
 
-local function buildFunPage()
+function buildFunPage()
     local function tg(key, text) return { t = "toggle", text = text, get = function() return Fun[key] end, set = function(v) Fun[key] = v end } end
     local function tgR(key, text) return { t = "toggle", text = text, get = function() return Fun[key] end, set = function(v) Fun[key] = v; refreshPage() end } end
     local function dd(key, text, list, refresh)
@@ -7873,7 +7873,7 @@ local function buildFunPage()
     return secs
 end
 
-local function buildPursuerPage() return Fun.Pur.sections() end
+function buildPursuerPage() return Fun.Pur.sections() end
 
 Features.fun = {
     serialize = function()
@@ -7924,23 +7924,23 @@ Features.fun = {
 -- script's DandyCustomizer folder is copied over once, automatically.
 -- Everything lives inside one function so it only costs the hub ONE top-level local (Luau allows 200).
 ----------------------------------------------------------------------
-local Cust = (function(tspToast, tspRefresh)
-local RS = ReplicatedStorage
-local getasset = getcustomasset or getsynasset
-local httpReq  = request or http_request or (syn and syn.request) or (http and http.request)
-local alive = true
-local conns = {}
-local toast = tspToast
+Cust = (function(tspToast, tspRefresh)
+RS = ReplicatedStorage
+getasset = getcustomasset or getsynasset
+httpReq  = request or http_request or (syn and syn.request) or (http and http.request)
+alive = true
+conns = {}
+toast = tspToast
 
 -- File system
-local ROOT_DIR   = ROOT_DIR .. "/CharacterCustomizer"   -- inside the hub's own folder (the hub's ROOT_DIR is "TonyScriptPalace")
-local CFG_DIR    = ROOT_DIR .. "/Configs"
-local LIB_DIR    = ROOT_DIR .. "/Library"
-local CACHE_DIR  = ROOT_DIR .. "/Cache"
-local SETTINGS_F = ROOT_DIR .. "/settings.json"
+ROOT_DIR   = ROOT_DIR .. "/CharacterCustomizer"   -- inside the hub's own folder (the hub's ROOT_DIR is "TonyScriptPalace")
+CFG_DIR    = ROOT_DIR .. "/Configs"
+LIB_DIR    = ROOT_DIR .. "/Library"
+CACHE_DIR  = ROOT_DIR .. "/Cache"
+SETTINGS_F = ROOT_DIR .. "/settings.json"
 
-local function sanitize(s) return (tostring(s):gsub("[^%w%-_ ]", "_")) end
-local function deepcopy(t)
+function sanitize(s) return (tostring(s):gsub("[^%w%-_ ]", "_")) end
+function deepcopy(t)
     if type(t) ~= "table" then return t end
     local o = {}
     for k, v in pairs(t) do o[k] = deepcopy(v) end
@@ -7974,7 +7974,7 @@ do
     end
 end
 
-local S = {
+S = {
     rules = {}, autoApply = false, autoConfig = "", keepWorking = true, localAnims = true,
     sources = { Lobby = true, Game = true, Roleplay = true }, captureOthers = true,
 }
@@ -7994,14 +7994,14 @@ do
         end
     end
 end
-local function saveSettings() local j = jsonEncode(S); if j then writeFile(SETTINGS_F, j) end end
+function saveSettings() local j = jsonEncode(S); if j then writeFile(SETTINGS_F, j) end end
 
 -- Two fixed folders inside TonyScriptPalace/CharacterCustomizer (no custom folders):
 --   Images    pictures for the 2D Character
 --   Textures  face textures and the voting icon
 -- Animation files (.rbxm) can sit in either one.
-local FOLDERS = { "Images", "Textures" }
-local function ensureDir(rel)               -- creates nested folders one segment at a time
+FOLDERS = { "Images", "Textures" }
+function ensureDir(rel)               -- creates nested folders one segment at a time
     local cur = ROOT_DIR
     for seg in tostring(rel):gmatch("[^/]+") do
         cur = cur .. "/" .. seg
@@ -8013,8 +8013,8 @@ for _, f in ipairs(FOLDERS) do ensureDir(f) end
 
 -- Writing MeshId only changes the property: the geometry is NOT reloaded, so the old shape just gets stretched.
 -- AssetService:CreateMeshPartAsync loads real geometry, and ApplyMesh copies it onto a live part (verified in-game).
-local meshCache = {}
-local function getMesh(id)   -- yields
+meshCache = {}
+function getMesh(id)   -- yields
     local c = meshCache[id]
     if c then return c end
     local ok, mp = pcall(function() return game:GetService("AssetService"):CreateMeshPartAsync(id) end)
@@ -8023,10 +8023,10 @@ local function getMesh(id)   -- yields
 end
 
 -- Asset sources (rbxassetid / link / file in the Images or Textures folder)
-local EXTS, classifyAsset, resolveAsset, resolveAnim, fileOptions, walkFiles, findFile
+EXTS = nil
 do
 EXTS = { "png", "jpg", "jpeg", "webp", "bmp", "tga", "obj", "mesh", "rbxm", "rbxmx", "mp3", "ogg", "wav" }
-local function hash(s)
+function hash(s)
     local h = 5381
     for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
     return string.format("%08x%x", h, #s)
@@ -8046,7 +8046,7 @@ classifyAsset = function(src)
     return "file", src
 end
 
-local function normalizeUrl(u)
+function normalizeUrl(u)
     local id = u:match("drive%.google%.com/file/d/([%w%-_]+)")
     if not id and (u:find("drive.google.com", 1, true) or u:find("docs.google.com", 1, true)) then
         id = u:match("[?&]id=([%w%-_]+)")
@@ -8062,7 +8062,7 @@ local function normalizeUrl(u)
     return u
 end
 
-local function sniff(b)
+function sniff(b)
     if b:sub(1, 4) == "\137PNG" then return "png" end
     if b:sub(1, 3) == "\255\216\255" then return "jpg" end
     if b:sub(1, 4) == "RIFF" and b:sub(9, 12) == "WEBP" then return "webp" end
@@ -8075,11 +8075,11 @@ local function sniff(b)
     if b:sub(1, 8) == "version " then return "mesh" end
     return nil
 end
-local function isHtml(b)
+function isHtml(b)
     local h = b:sub(1, 300):lower()
     return h:find("<!doctype", 1, true) ~= nil or h:find("<html", 1, true) ~= nil
 end
-local function fetch(url)
+function fetch(url)
     if not httpReq then return nil, "This executor has no request()." end
     local ok, res = pcall(httpReq, { Url = url, Method = "GET", Headers = { ["User-Agent"] = "Mozilla/5.0" } })
     if not ok then return nil, "Request failed: " .. tostring(res) end
@@ -8088,13 +8088,13 @@ local function fetch(url)
     if code >= 400 then return nil, "Server answered HTTP " .. code .. " (is the link public?)" end
     return res.Body or "", nil
 end
-local function cachedPath(key)
+function cachedPath(key)
     for _, e in ipairs(EXTS) do
         local p = CACHE_DIR .. "/" .. key .. "." .. e
         if fileExists(p) then return p end
     end
 end
-local function fetchToCache(url, force)
+function fetchToCache(url, force)
     local nurl = normalizeUrl(url)
     local key = hash(nurl)
     if not force then
@@ -8127,7 +8127,7 @@ walkFiles = function(folder, depth, out)
         end
     end
 end
-local function registeredFiles()
+function registeredFiles()
     local out = {}
     for _, folder in ipairs(FOLDERS) do            -- folders live inside TonyScriptPalace/CharacterCustomizer
         local all = {}
@@ -8146,9 +8146,9 @@ local function registeredFiles()
     table.sort(out, function(a, b) return a.label:lower() < b.label:lower() end)
     return out
 end
-local IMG = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
-local MESHX = { obj = true, mesh = true }
-local ANIMX = { rbxm = true, rbxmx = true }
+IMG = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
+MESHX = { obj = true, mesh = true }
+ANIMX = { rbxm = true, rbxmx = true }
 fileOptions = function(kind, folder)          -- folder (optional): only list files from "Images" or "Textures"
     local out = {}
     local pre = folder and (folder:lower() .. "/")
@@ -8233,8 +8233,8 @@ end
 
 end
 -- Value encoding (everything in a config is plain JSON)
-local ENUM_OF = { Material = "Material", Shape = "PartType", Face = "NormalId", ResampleMode = "ResamplerMode" }
-local PK = {
+ENUM_OF = { Material = "Material", Shape = "PartType", Face = "NormalId", ResampleMode = "ResamplerMode" }
+PK = {
     Transparency = "num", Reflectance = "num", Color = "color", Color3 = "color", TextColor3 = "color",
     Material = "enum", Shape = "enum", Face = "enum", Size = "vec3", Offset = "vec3", Rotation = "vec3",
     MeshId = "asset", TextureID = "asset", Texture = "asset", Image = "asset",
@@ -8242,7 +8242,7 @@ local PK = {
     LightInfluence = "num", PixelsPerStud = "num", Text = "string", ImageTransparency = "num",
     StudsPerTileU = "num", StudsPerTileV = "num", Brightness = "num", Range = "num",
 }
-local function decV(prop, enc)
+function decV(prop, enc)
     local k = PK[prop]
     if k == "num" then return tonumber(enc)
     elseif k == "bool" then return enc and true or false
@@ -8258,7 +8258,7 @@ local function decV(prop, enc)
     end
     return nil
 end
-local function encInst(inst, prop)
+function encInst(inst, prop)
     local k = PK[prop]
     local ok, v = pcall(function() return inst[prop] end)
     if not ok then return nil end
@@ -8269,13 +8269,13 @@ local function encInst(inst, prop)
 end
 
 -- Model helpers
-local LOCK = { HumanoidRootPart = true, RootPart = true, DWFlat = true }
-local function pathOf(model, inst)
+LOCK = { HumanoidRootPart = true, RootPart = true, DWFlat = true }
+function pathOf(model, inst)
     local t, c = {}, inst
     while c and c ~= model do table.insert(t, 1, c.Name); c = c.Parent end
     return table.concat(t, "/")
 end
-local function findPath(model, path)
+function findPath(model, path)
     local c = model
     for part in tostring(path):gmatch("[^/]+") do
         if not c then return nil end
@@ -8283,7 +8283,7 @@ local function findPath(model, path)
     end
     return c
 end
-local function jointFor(inst)
+function jointFor(inst)
     local second
     for _, d in ipairs(inst:GetChildren()) do
         if d:IsA("Motor6D") or d:IsA("Weld") or d:IsA("ManualWeld") then
@@ -8293,7 +8293,7 @@ local function jointFor(inst)
     end
     return second
 end
-local function identity(model)
+function identity(model)
     local cfg = model and model:FindFirstChild("Config")
     local function sv(n) local v = cfg and cfg:FindFirstChild(n); return v and v.Value or nil end
     return {
@@ -8303,10 +8303,10 @@ local function identity(model)
     }
 end
 -- WHERE TOONS LIVE. Lobby = workspace.Players, Game = workspace.InGamePlayers, Roleplay = auto-detected.
-local PLACE_MODE = { [16116270224] = "Lobby", [16552821455] = "Game", [18984416148] = "Roleplay" }   -- verified live: Roleplay Mode is its own place and also uses workspace.Players
-local RP_NAMES = { "RoleplayPlayers", "RoleplayCharacters", "RPPlayers", "RPCharacters", "RoleplayMode", "Roleplay" }
-local function looksToon(m) return m:IsA("Model") and m:FindFirstChild("Config") ~= nil and m:FindFirstChild("Animations") ~= nil end
-local function classify(folder)
+PLACE_MODE = { [16116270224] = "Lobby", [16552821455] = "Game", [18984416148] = "Roleplay" }   -- verified live: Roleplay Mode is its own place and also uses workspace.Players
+RP_NAMES = { "RoleplayPlayers", "RoleplayCharacters", "RPPlayers", "RPCharacters", "RoleplayMode", "Roleplay" }
+function looksToon(m) return m:IsA("Model") and m:FindFirstChild("Config") ~= nil and m:FindFirstChild("Animations") ~= nil end
+function classify(folder)
     -- Roleplay Mode (and any place we do not recognise) labels everything Roleplay, whatever the folder is called
     local pm = PLACE_MODE[game.PlaceId]
     if pm == nil or pm == "Roleplay" then return "Roleplay" end
@@ -8315,8 +8315,8 @@ local function classify(folder)
     if folder.Name == "Players" then return "Lobby" end
     return "Roleplay"
 end
-local rpFound, lastDiscover = {}, 0
-local function rootsNow()
+rpFound, lastDiscover = {}, 0
+function rootsNow()
     local out, seen = {}, {}
     local function add(f) if f and f.Parent and not seen[f] then seen[f] = true; out[#out + 1] = { f = f, mode = classify(f) } end end
     add(workspace:FindFirstChild("InGamePlayers"))
@@ -8340,7 +8340,7 @@ local function rootsNow()
     for f in pairs(rpFound) do if f.Parent then add(f) else rpFound[f] = nil end end
     return out
 end
-local function findMine(roots)
+function findMine(roots)
     for _, r in ipairs(roots) do
         local m = r.f ~= workspace and r.f:FindFirstChild(LP.Name)
         if m and m:IsA("Model") then return m, r.mode end
@@ -8348,7 +8348,7 @@ local function findMine(roots)
     local ch = LP.Character
     if ch and ch.Parent and ch:FindFirstChild("Config") then return ch, classify(ch.Parent) end
 end
-local function reqMismatch(req, id)
+function reqMismatch(req, id)
     for _, k in ipairs({ "CharacterName", "ModuleName", "Skin" }) do
         local want = req and req[k]
         if want and want ~= "" and tostring(id[k] or "") ~= want then return k, want, id[k] end
@@ -8356,8 +8356,8 @@ local function reqMismatch(req, id)
 end
 
 -- Library (toons the script has seen; filled automatically)
-local Library = {}
-local function serializeModel(model)
+Library = {}
+function serializeModel(model)
     local id = identity(model)
     local cfg = model:FindFirstChild("Config")
     local d = {
@@ -8381,12 +8381,12 @@ local function serializeModel(model)
     return d
 end
 
-local function keyOf(model)
+function keyOf(model)
     local id = identity(model)
     return tostring(id.ModuleName or id.CharacterName or "Unknown") .. "__" .. tostring(id.Skin or "Default")
 end
-local forceCaptureUntil = 0
-local function captureModel(model, mode)
+forceCaptureUntil = 0
+function captureModel(model, mode)
     if not model:FindFirstChild("Config") then return end   -- only real toon models go in the library
     local prev = Library[keyOf(model)]
     -- already saved and already seen in this source: nothing new to learn
@@ -8416,7 +8416,7 @@ do
         end
     end
 end
-local function libEntries()
+function libEntries()
     local out = {}
     for _, e in pairs(Library) do out[#out + 1] = e end
     table.sort(out, function(a, b)
@@ -8425,10 +8425,10 @@ local function libEntries()
     end)
     return out
 end
-local function libLabel(e) return e.toon .. " (" .. e.skin .. ")" end
+function libLabel(e) return e.toon .. " (" .. e.skin .. ")" end
 
 -- vote icons for ALL toons come straight from the game's own data
-local function towerIcons()
+function towerIcons()
     local out = {}
     local td = RS:FindFirstChild("TowerData")
     if td then
@@ -8443,10 +8443,10 @@ local function towerIcons()
     return out
 end
 -- Context (everything we do to ONE character model, fully reversible)
-local Ctx = {}
+Ctx = {}
 Ctx.__index = Ctx
 
-local function hookPart(c, p)
+function hookPart(c, p)
     local con = p:GetPropertyChangedSignal("TextureID"):Connect(function()
         if c.guard then return end
         local m = c.texMap[p.TextureID]
@@ -8460,7 +8460,7 @@ local function hookPart(c, p)
     c.hooks[#c.hooks + 1] = con
 end
 
-local function newCtx(model, mine)
+function newCtx(model, mine)
     local c = setmetatable({
         model = model, mine = mine, orig = {}, desired = {}, texMap = {}, revMap = {}, jointBase = {}, infoOf = {},
         created = {}, specIdOf = {}, createdSet = {}, mcreated = {}, weldOf = {}, hooks = {}, guard = false,
@@ -8652,8 +8652,8 @@ end
 -- Replacement animations use their own joint names. In local mode the real Animations folder is never changed:
 -- we read the replacement's keyframes ourselves and write them straight onto the matching bones/joints every frame.
 -- Bone.Transform is client-side only, so nothing here can replicate.
-local ksCache = {}
-local function prepareKS(ks)
+ksCache = {}
+function prepareKS(ks)
     local kfs = ks:GetKeyframes()
     table.sort(kfs, function(a, b) return a.Time < b.Time end)
     local frames, names = {}, {}
@@ -8670,7 +8670,7 @@ local function prepareKS(ks)
     end
     return { frames = frames, length = (#frames > 0) and frames[#frames].t or 0, loop = ks.Loop, names = names }
 end
-local function sampleKS(prep, t, out)
+function sampleKS(prep, t, out)
     local fr = prep.frames
     local n = #fr
     if n == 0 then return end
@@ -8696,7 +8696,7 @@ local function sampleKS(prep, t, out)
     end
 end
 -- src: an animation id, link or file -> cb(prepared keyframes | nil, error)
-local function loadKS(src, cb)
+function loadKS(src, cb)
     local kind, v = classifyAsset(src)
     if kind == "empty" then return cb(nil, "empty") end
     local key = (kind == "id") and v or nil
@@ -8868,7 +8868,7 @@ function Ctx:refreshJoint(inst)
     self:setD(j, prop, O:Inverse() * jb[prop])
 end
 
-local function applyProp(ctx, inst, prop, enc)
+function applyProp(ctx, inst, prop, enc)
     local props = ctx.infoOf[inst]
     if prop == "Hidden" then
         if enc then ctx:hide(inst) else ctx:unhide(inst) end
@@ -8888,7 +8888,7 @@ local function applyProp(ctx, inst, prop, enc)
     end
 end
 
-local function hideTargets(root)
+function hideTargets(root)
     local out = { root }
     for _, d in ipairs(root:GetDescendants()) do out[#out + 1] = d end
     return out
@@ -9137,13 +9137,13 @@ function Ctx:applyFlat(f)
 end
 
 -- Working config
-local function newCfg()
+function newCfg()
     return { name = "", requires = {}, textures = {}, animations = {}, overrides = {}, added = {}, nextId = 1 }
 end
-local W = { cfg = newCfg(), mine = nil, sel = nil, libSel = nil, others = {} }
-local ctxs = {}   -- model -> ctx (others)
+W = { cfg = newCfg(), mine = nil, sel = nil, libSel = nil, others = {} }
+ctxs = {}   -- model -> ctx (others)
 
-local function normCfg(c)
+function normCfg(c)
     c = type(c) == "table" and c or {}
     local o = newCfg()
     o.name = tostring(c.name or "")
@@ -9158,12 +9158,12 @@ local function normCfg(c)
     return o
 end
 
-local function cfgHasContent(c)
+function cfgHasContent(c)
     if c.flat or next(c.textures) or next(c.animations) or next(c.overrides) or #c.added > 0 then return true end
     return false
 end
 
-local function applyConfig(ctx, cfg)
+function applyConfig(ctx, cfg)
     ctx:revertAll()
     for k, src in pairs(cfg.textures) do
         if k == "Icon" then ctx:applyIcon(src) else ctx:applyTexture(k, src) end
@@ -9184,9 +9184,9 @@ local function applyConfig(ctx, cfg)
     if cfg.flat and cfg.flat.enabled then ctx:applyFlat(cfg.flat) end
 end
 
-local previewDirty = true
-local refreshPages = function() end
-local function reapply()
+previewDirty = true
+refreshPages = function() end
+function reapply()
     if W.mine then applyConfig(W.mine, W.cfg) end
     previewDirty = true
     refreshPages()
@@ -9221,7 +9221,7 @@ do
 end
 
 -- Rules + binding your toon + capture loop
-local function matchRule(id, isMe)
+function matchRule(id, isMe)
     local best, bestScore
     for _, r in ipairs(S.rules) do
         if r.enabled and r.config and r.config ~= "" and (isMe or r.scope == "all") then
@@ -9238,22 +9238,22 @@ local function matchRule(id, isMe)
     end
     return best
 end
-local function loadRuleCfg(rule)
+function loadRuleCfg(rule)
     local data = jsonDecode(readFile(CFG_DIR .. "/" .. rule.config .. ".json") or "")
     if type(data) ~= "table" then toast("Rule config '" .. tostring(rule.config) .. "' wasn't found.", "err"); return nil end
     return normCfg(data)
 end
 
-local boundModel, mineMode = nil, nil
-local capturedModels = {}
-local rootCache = {}   -- mode -> { name, n }   (read by the Sources readouts)
+boundModel, mineMode = nil, nil
+capturedModels = {}
+rootCache = {}   -- mode -> { name, n }   (read by the Sources readouts)
 
-local function modelReady(m) return m:FindFirstChildWhichIsA("BasePart", true) ~= nil end
-local function modelComplete(m)
+function modelReady(m) return m:FindFirstChildWhichIsA("BasePart", true) ~= nil end
+function modelComplete(m)
     return m:FindFirstChild("Config") and m:FindFirstChild("Animations") and m:FindFirstChild("Head") and m:FindFirstChild("Torso")
 end
 
-local function bindMine(model, mode)
+function bindMine(model, mode)
     if W.mine then W.mine:destroy() end
     W.mine = nil; W.sel = nil
     boundModel = model; mineMode = mode
@@ -9357,7 +9357,7 @@ task.spawn(function()
 end)
 
 -- keeps the game from undoing your edits (only runs real work when something is actually edited)
-local function enforce(c)
+function enforce(c)
     for inst, props in pairs(c.desired) do
         if inst.Parent then
             for prop, v in pairs(props) do
@@ -9387,7 +9387,7 @@ end)
 
 --#endregion customizer-engine
 --#region customizer-tab
-local function targetsOf(model)
+function targetsOf(model)
     local out = {}
     local function visit(inst, depth)
         local kids = inst:GetChildren()
@@ -9407,7 +9407,7 @@ local function targetsOf(model)
     return out
 end
 
-local function editProp(inst, prop, enc)
+function editProp(inst, prop, enc)
     local ctx = W.mine
     if not ctx then return end
     local props = ctx.infoOf[inst]
@@ -9422,7 +9422,7 @@ local function editProp(inst, prop, enc)
     previewDirty = true
 end
 
-local function curEnc(inst, prop)
+function curEnc(inst, prop)
     local ctx = W.mine
     local props = ctx and ctx.infoOf[inst]
     if props and props[prop] ~= nil then return props[prop] end
@@ -9432,12 +9432,12 @@ end
 
 
 -- Customizer tab (sections built from the hub's own control types, so it follows whichever skin is active)
-local P = {
+P = {
     texSlot = "Normal", texSrc = "", texState = {}, animName = nil, animSrc = "", animState = {}, imgState = { Normal = {}, Blink = {}, Hurt = {} }, part = nil, cfgSel = "", cfgName = "",
     spin = false, zoom = 1, pv = nil, panMode = false,
 }
-local MODES = { "Lobby", "Game", "Roleplay" }
-local function texSlots()            -- every face slot this toon has (Normal, Blink, Hurt, Face, Transform...), plus the voting icon
+MODES = { "Lobby", "Game", "Roleplay" }
+function texSlots()            -- every face slot this toon has (Normal, Blink, Hurt, Face, Transform...), plus the voting icon
     local out, seen = {}, {}
     local function add(k) if not seen[k] then seen[k] = true; out[#out + 1] = k end end
     for _, k in ipairs({ "Normal", "Blink", "Hurt" }) do if W.mine and W.mine.origTex[k] ~= nil then add(k) end end
@@ -9452,23 +9452,23 @@ local function texSlots()            -- every face slot this toon has (Normal, B
     return out
 end
 
-local function need()
+function need()
     if not W.mine then toast("No character found yet. Join the lobby, a match or Roleplay Mode.", "err"); return false end
     return true
 end
-local function short(s, n)
+function short(s, n)
     s = tostring(s); n = n or 30
     if #s > n then return s:sub(1, n - 3) .. "..." end
     return s
 end
-local function entriesFor(filter)
+function entriesFor(filter)
     local out = {}
     for _, e in ipairs(libEntries()) do
         if filter == "All" or (type(e.srcs) == "table" and e.srcs[filter]) then out[#out + 1] = e end
     end
     return out
 end
-local function toonOpts(kind, filter)       -- labels, map
+function toonOpts(kind, filter)       -- labels, map
     local labels, map = {}, {}
     for _, e in ipairs(entriesFor(filter or "All")) do
         local ok = (kind == "tex" and next(e.tex) ~= nil) or (kind == "anim" and next(e.anims) ~= nil) or kind == nil
@@ -9476,8 +9476,8 @@ local function toonOpts(kind, filter)       -- labels, map
     end
     return labels, map
 end
-local function fileOpts(kind, folder) return fileOptions(kind, folder) end      -- entries starting with "(" are hints, not files
-local function cfgList()
+function fileOpts(kind, folder) return fileOptions(kind, folder) end      -- entries starting with "(" are hints, not files
+function cfgList()
     local out = {}
     for _, p in ipairs(listDir(CFG_DIR)) do
         local n = baseName(p)
@@ -9486,8 +9486,8 @@ local function cfgList()
     table.sort(out, function(a, b) return a:lower() < b:lower() end)
     return out
 end
-local function curIdentity() return identity(W.mine and W.mine.model) end
-local function loadCfgFile(n, force)
+function curIdentity() return identity(W.mine and W.mine.model) end
+function loadCfgFile(n, force)
     local data = jsonDecode(readFile(CFG_DIR .. "/" .. n .. ".json") or "")
     if type(data) ~= "table" then return false, "Couldn't read '" .. n .. "'." end
     local c = normCfg(data)
@@ -9500,7 +9500,7 @@ local function loadCfgFile(n, force)
 end
 
 -- status ---------------------------------------------------------------
-local function statusLine()
+function statusLine()
     if W.mine then
         local id = identity(W.mine.model)
         return "safe", "Editing " .. tostring(id.CharacterName or "?") .. "  |  module " .. tostring(id.ModuleName or "?")
@@ -9511,7 +9511,7 @@ end
 
 -- The game keeps many finished toon models in memory (parented to nil). Capturing them fills the library without having to
 -- meet every toon in a match.
-local function scanMemory()
+function scanMemory()
     local ok, nils = pcall(getnilinstances)
     if not ok or type(nils) ~= "table" then return toast("This executor cannot list hidden instances.", "err") end
     toast("Scanning the game's memory for toon models...", "info")
@@ -9532,7 +9532,7 @@ local function scanMemory()
     end)
 end
 -- textures -------------------------------------------------------------
-local function texApply(src)
+function texApply(src)
     if not need() then return end
     src = trim(src or "")
     if src == "" then return toast("Pick a file or enter an ID or link first.", "err") end
@@ -9540,7 +9540,7 @@ local function texApply(src)
     if P.texSlot == "Icon" then W.mine:applyIcon(src) else W.mine:applyTexture(P.texSlot, src) end
     toast(P.texSlot .. " replaced.", "ok"); tspRefresh()
 end
-local function iconOpts()
+function iconOpts()
     local out = {}
     for _, t in ipairs(towerIcons()) do out[#out + 1] = "Toon icon: " .. t.name end
     for _, e in ipairs(libEntries()) do if e.icon then out[#out + 1] = "Seen: " .. libLabel(e) end end
@@ -9548,7 +9548,7 @@ local function iconOpts()
 end
 
 -- animations -----------------------------------------------------------
-local function animNames()
+function animNames()
     local t = {}
     if W.mine then for n in pairs(W.mine.origAnim) do t[#t + 1] = n end end
     table.sort(t)
@@ -9556,7 +9556,7 @@ local function animNames()
 end
 
 -- parts ----------------------------------------------------------------
-local function partMap()
+function partMap()
     local labels, map = {}, {}
     if W.mine then
         for _, t in ipairs(targetsOf(W.mine.model)) do
@@ -9566,28 +9566,28 @@ local function partMap()
     end
     return labels, map
 end
-local function partInst() local p = P.part; if p and p.Parent and W.mine and p:IsDescendantOf(W.mine.model) then return p end end
-local function partProps(inst)
+function partInst() local p = P.part; if p and p.Parent and W.mine and p:IsDescendantOf(W.mine.model) then return p end end
+function partProps(inst)
     local ctx = W.mine
     return ctx and (ctx.infoOf[inst] or W.cfg.overrides[pathOf(ctx.model, inst)]) or nil
 end
-local function colorProp(inst) return inst:IsA("BasePart") and "Color" or ((inst:IsA("Decal") or inst:IsA("Texture")) and "Color3" or nil) end
-local function hasTransp(inst) return inst:IsA("BasePart") or inst:IsA("Decal") or inst:IsA("Texture") end
+function colorProp(inst) return inst:IsA("BasePart") and "Color" or ((inst:IsA("Decal") or inst:IsA("Texture")) and "Color3" or nil) end
+function hasTransp(inst) return inst:IsA("BasePart") or inst:IsA("Decal") or inst:IsA("Texture") end
 
 -- 2D character ---------------------------------------------------------
-local function flatDefaults()
+function flatDefaults()
     return {
         enabled = false, mode = "Decal", facing = "yaw", beamDir = "Top to bottom", attach = "RootPart",
         images = { Normal = "", Blink = "", Hurt = "", Back = "" }, width = 4, height = 4,
         offset = { 0, 0, 0 }, rot = { 0, 0, 0 }, hideBody = true, groundAlign = true, groundOffset = 0, pixelated = true, back = "same", backFlip = false, nameTag = "auto", nameLift = 0,
     }
 end
-local FACING = { yaw = "Camera (yaw only)", full = "Camera (full)", fixed = "Fixed" }
-local FACING_REV = { ["Camera (yaw only)"] = "yaw", ["Camera (full)"] = "full", ["Fixed"] = "fixed" }
-local function flat() if not W.cfg.flat then W.cfg.flat = flatDefaults() end; return W.cfg.flat end
+FACING = { yaw = "Camera (yaw only)", full = "Camera (full)", fixed = "Fixed" }
+FACING_REV = { ["Camera (yaw only)"] = "yaw", ["Camera (full)"] = "full", ["Fixed"] = "fixed" }
+function flat() if not W.cfg.flat then W.cfg.flat = flatDefaults() end; return W.cfg.flat end
 
 ----------------------------------------------------------------------
-local function buildPage()
+function buildPage()
     local secs = {}
 
     local CUSTOM_SRC = "Custom ID / Link..."
@@ -9921,7 +9921,7 @@ end
 -- Public API
 refreshPages = function() tspRefresh() end
 
-local API = { build = buildPage, working = W }
+API = { build = buildPage, working = W }
 function API.serialize()
     return { config = (W.cfg.name ~= "" and W.cfg.name) or nil,
         settings = { autoApply = S.autoApply, autoConfig = S.autoConfig, keepWorking = S.keepWorking, localAnims = S.localAnims, captureOthers = S.captureOthers,
@@ -9961,7 +9961,7 @@ end)(function(m, k) toast(m, k) end, function() if UI.current == "customizer" th
 -- Lives at UI.snd (no new top-level locals). The Sound tab (page-sound region) talks to it through that table.
 ----------------------------------------------------------------------
 UI.snd = (function()   -- one function scope: the main script is close to Lua's 200-locals limit, so this region adds NO top-level locals
-local Snd = { K = {} }
+Snd = { K = {} }
     local getasset = getcustomasset or getsynasset
     local httpReq  = request or http_request or (syn and syn.request) or (http and http.request)
     local SoundService = game:GetService("SoundService")
@@ -12018,12 +12018,12 @@ do
 --  * on-screen buttons live in their own ScreenGui, are drawn with the skin's own Button, and are rebuilt when the skin changes.
 --    Click = flip the toggle, drag = move, right-click = menu (remove). They light up while the toggle is on.
 ----------------------------------------------------------------------
-local Binds = { map = {}, reg = {}, btns = {}, gui = nil, menuGui = nil, flash = nil }
+Binds = { map = {}, reg = {}, btns = {}, gui = nil, menuGui = nil, flash = nil }
 UI.binds = Binds
 
-local BIND_AMBIGUOUS = { Enabled = true, Fill = true }     -- toggle names that repeat in every section: the section name is added in front
+BIND_AMBIGUOUS = { Enabled = true, Fill = true }     -- toggle names that repeat in every section: the section name is added in front
 
-local function bindTab(tabId)
+function bindTab(tabId)
     for _, t in ipairs(UI.tabs) do if t.id == tabId then return t end end
 end
 
@@ -12059,7 +12059,7 @@ function Binds.resolve(id)
     return Binds.reg[id]
 end
 
-local function bindEntry(id)
+function bindEntry(id)
     local m = Binds.map[id]
     if not m then
         local r = Binds.reg[id]
@@ -12068,12 +12068,12 @@ local function bindEntry(id)
     end
     return m
 end
-local function bindPrune(id)
+function bindPrune(id)
     local m = Binds.map[id]
     if m and not m.key and not m.btn then Binds.map[id] = nil end
 end
 
-local function bindGuiOn()
+function bindGuiOn()
     if Binds.gui and Binds.gui.Parent then return Binds.gui end
     if not T then return nil end            -- the skin is not built yet (a config auto-loads before the hub exists)
     local g = New("ScreenGui", { Name = "TonyScriptPalaceButtons", ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -12103,7 +12103,7 @@ end
 Binds.kill = { armedUntil = 0 }
 Binds.killId = "binds|Do Not Press|Kill Me"
 do
-local Kill, KILL_ID = Binds.kill, Binds.killId
+Kill, KILL_ID = Binds.kill, Binds.killId
 
 function Kill.run()
     local ch = LP.Character
@@ -12173,10 +12173,10 @@ function Binds.onKey(name)
 end
 
 -- ---------------------------------------------------------------- the menu (lives in its own ScreenGui so it also works with the hub hidden)
-local function bindCloseMenu()
+function bindCloseMenu()
     if Binds.menuGui then pcall(function() Binds.menuGui:Destroy() end); Binds.menuGui = nil end
 end
-local function bindMenu(title, items)
+function bindMenu(title, items)
     bindCloseMenu()
     if not T then return end
     local g = New("ScreenGui", { Name = "TonyScriptPalaceMenu", ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -12207,20 +12207,20 @@ local function bindMenu(title, items)
 end
 
 -- ---------------------------------------------------------------- on-screen buttons
-local function bindNextPos()
+function bindNextPos()
     local n = 0
     for _, m in pairs(Binds.map) do if m.btn then n += 1 end end
     return { x = 0.1 + 0.11 * math.floor(n / 8), y = 0.22 + 0.075 * (n % 8) }
 end
 
-local function bindIsOn(id)
+function bindIsOn(id)
     local e = Binds.reg[id]
     if not e then return false end
     local ok, v = pcall(e.c.get)
     return ok and v and true or false
 end
 
-local function bindMakeButton(g, id, m)
+function bindMakeButton(g, id, m)
     Binds.resolve(id)                   -- finds the toggle even when its page was never opened this session
     local on = bindIsOn(id)
     local label = m.label or id
@@ -12378,9 +12378,9 @@ Features.binds = {
 }
 
 -- ---------------------------------------------------------------- the Keybinds tab
-local bindPick = { tab = "esp", label = nil }
+bindPick = { tab = "esp", label = nil }
 
-local function bindToggleList(tabId)
+function bindToggleList(tabId)
     local out, seen = {}, {}
     local tab = bindTab(tabId)
     if not tab then return out end
@@ -12400,7 +12400,7 @@ local function bindToggleList(tabId)
     return out
 end
 
-local function buildBindsPage()
+function buildBindsPage()
     local secs = {}
     -- Your binds
     local ids = {}
@@ -12541,7 +12541,7 @@ Features.customizer = { serialize = function() return Cust.serialize() end, appl
 Features.sound = { serialize = function() return UI.snd.serialize() end, apply = function(d) UI.snd.apply(d) end }
 
 -- puts a page's sections into rail groups: spec[title] = { g = group, t = shorter title, pin = keep it beside the other sections on wide windows }
-local function grouped(build, spec)
+function grouped(build, spec)
     return function()
         local secs = build()
         for _, sec in ipairs(secs) do
@@ -12557,7 +12557,7 @@ local function grouped(build, spec)
     end
 end
 
-local ESP_GROUPS = {
+ESP_GROUPS = {
     ["General"] = { g = "Basics" },
     ["Toons"] = { g = "Players" },
     ["Ichorlings"] = { g = "Players" },
@@ -12571,25 +12571,25 @@ local ESP_GROUPS = {
     ["Twisted Razzle & Dazzle's Vines"] = { g = "Hazards", r = "Razzle's Vines" },   -- the full name is 156px wide in some skins, the rail text area is 148px
     ["Ichor Puddles"] = { g = "Hazards" },
 }
-local SKILL_GROUPS = {
+SKILL_GROUPS = {
     ["More Skill Checks"] = { g = "Basics", t = "Main" }, ["Live Values"] = { g = "Basics" },
     ["Size, Speed, Chance And Value"] = { g = "Tuning", t = "Size, Speed, Chance" }, ["Per-Twisted Changes"] = { g = "Tuning" },
     ["Green/Yellow Rewards"] = { g = "Tuning" }, ["Failure Penalties"] = { g = "Tuning" },
     ["Stacking"] = { g = "Extras" }, ["Trinkets"] = { g = "Extras" }, ["Treadmill Failure And Icons"] = { g = "Extras", t = "Treadmill And Icons" },
 }
-local PURSUER_GROUPS = {
+PURSUER_GROUPS = {
     ["Pursuer (Custom Chaser)"] = { g = "Setup", t = "Main" }, ["Pursuer: Saved Pursuers"] = { g = "Setup", t = "Saved Pursuers" },
     ["Pursuer: Look And Preview"] = { g = "Setup", t = "Look And Preview" },
     ["Pursuer: Movement And Speed"] = { g = "Behavior", t = "Movement And Speed" }, ["Pursuer: Dash"] = { g = "Behavior", t = "Dash" }, ["Pursuer: Spawning"] = { g = "Behavior", t = "Spawning" },
     ["Pursuer: Chase Alert"] = { g = "Extras", t = "Chase Alert" }, ["Pursuer: Sounds"] = { g = "Extras", t = "Sounds" }, ["Pursuer: Afterimages"] = { g = "Extras", t = "Afterimages" },
 }
-local CUSTOMIZER_GROUPS = {
+CUSTOMIZER_GROUPS = {
     ["Preview"] = { g = "View", pin = true },
     ["Status"] = { g = "Model" }, ["Model Sources"] = { g = "Model" },
     ["Textures"] = { g = "Look" }, ["Animations"] = { g = "Look" }, ["Parts"] = { g = "Look" }, ["2D Character"] = { g = "Look" },
     ["Customizer Configs"] = { g = "Library" }, ["Files & Library"] = { g = "Library" },
 }
-local SOUND_GROUPS = {
+SOUND_GROUPS = {
     ["Player"] = { g = "Music" }, ["Songs"] = { g = "Music" }, ["Song Editor"] = { g = "Music" },
     ["Sound Effects"] = { g = "Effects" }, ["Effect Editor"] = { g = "Effects" },
     ["Game Sound Replacement"] = { g = "Game Audio", t = "Replace Sounds" }, ["Replacement Editor"] = { g = "Game Audio" },
@@ -12662,7 +12662,7 @@ function applyLayout()
     if Grip then Grip.Visible = not S.fullscreen end
 end
 
-local function makeDraggable(handle)
+function makeDraggable(handle)
     handle.InputBegan:Connect(function(i)
         if isPress(i) and not S.fullscreen then
             local sp, wp = i.Position, Win.Position
@@ -12678,7 +12678,7 @@ local function makeDraggable(handle)
     end)
 end
 
-local function makeGrip()
+function makeGrip()
     Grip = New("TextButton", { Name = "Grip", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1),
         Position = UDim2.new(1, -4, 1, -4), Size = UDim2.fromOffset(22, 22), ZIndex = 10 }, Win)
     for r = 0, 2 do
@@ -12705,7 +12705,7 @@ local function makeGrip()
     end)
 end
 
-local function makeOrb()
+function makeOrb()
     local aero = T.kind == "aero"
     local xp = T.kind == "xp"
     Orb = New("TextButton", { Name = "Orb", Text = "", AutoButtonColor = false, BackgroundColor3 = WHITE, Size = UDim2.fromOffset(46, 46),
@@ -12749,7 +12749,7 @@ end
 --#endregion window-behaviour
 --#region skin-dandy
 -- Skin: Dandy's World (default)
-local function buildDandyChrome()
+function buildDandyChrome()
     local c = T.c
     Win.BackgroundColor3 = c.panel; Win.ClipsDescendants = true
     corner(Win, 14)
@@ -12824,7 +12824,7 @@ end
 --#endregion skin-dandy
 --#region skin-aero
 -- Skin: Frutiger Aero
-local function buildAeroChrome()
+function buildAeroChrome()
     local c = T.c
     Win.ClipsDescendants = true
     corner(Win, 18); stroke(Win, WHITE, 2.5, 0.15)
@@ -12912,7 +12912,7 @@ end
 --#endregion skin-aero
 --#region skin-xmb
 -- Skin: XMB / PlayStation
-local function drawIcon(parent, id)
+function drawIcon(parent, id)
     local function circ(x, y, d, filled, th)
         local f = New("Frame", { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(d, d), BackgroundColor3 = WHITE,
             BackgroundTransparency = filled and 0 or 1, BorderSizePixel = 0 }, parent)
@@ -12957,7 +12957,7 @@ local function drawIcon(parent, id)
     end
 end
 
-local function buildXMBChrome()
+function buildXMBChrome()
     local c = T.c
     corner(Win, 12); stroke(Win, WHITE, 1.5, 0.6)
     Win.ClipsDescendants = true
@@ -13088,7 +13088,7 @@ end
 --#endregion skin-xmb
 --#region skin-xp
 -- Skin: Windows XP Luna
-local function buildXPChrome()
+function buildXPChrome()
     local c = T.c
     Win.BackgroundColor3 = c.title:Lerp(BLACK, 0.12)   -- the thick Luna window frame
     corner(Win, 9)
@@ -13241,7 +13241,7 @@ connect(UIS.InputChanged, function(i)
 end)
 connect(UIS.InputEnded, function(i) if isPress(i) then activeDrag = nil end end)
 
-local function mouseOverWin()
+function mouseOverWin()
     if not (Win and Win.Visible) then return false end
     local m, p, s = UIS:GetMouseLocation(), Win.AbsolutePosition, Win.AbsoluteSize
     return m.X >= p.X and m.X <= p.X + s.X and m.Y >= p.Y and m.Y <= p.Y + s.Y
