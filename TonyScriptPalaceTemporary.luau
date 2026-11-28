@@ -1,29 +1,10 @@
--- Improved fixed version with traceback for Tony Script Palace
--- Run this and check your executor console / F9 for the full error and how far it got.
-
-print("[TonyScriptPalace] Starting load...")
-
-local function reportError(msg, tb)
-    local full = tostring(msg) .. "\n" .. tostring(tb or "")
-    warn("[TonyScriptPalace] ERROR:\n" .. full)
-    pcall(function()
-        local Players = game:GetService("Players")
-        local LP = Players.LocalPlayer
-        if LP then
-            LP:Kick("Tony Script Palace error (see console):\n" .. tostring(msg):sub(1, 300))
-        end
-    end)
-end
-
-local ok, err = xpcall(function()
-print("[TonyScriptPalace] Inside protected block, original script starting...")
 --#region header
 --[[
     Tony Script Palace
     Made for Dandy's World only, and for the Real executor.
 
     Tabs
-        Gameplay   ESP | Visualizers | Movement | World | Screen | Automation
+        Gameplay   ESP | Movement | World | Screen | Automation
         Fun        Customizer | Sound | Skill Checks | Pursuer | Chat | Animations
         Configs
         Options    Appearance | Keybinds
@@ -4933,9 +4914,9 @@ local function gloss(parent, radius, a0, a1)
     New("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(a0 or 0.2, a1 or 0.88) }, g)
     return g
 end
-function isPress(i) return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch end
+local function isPress(i) return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch end
 
-function makeTokens()
+local function makeTokens()
     if S.style == "dandy" then
         local c = S.dandy.colors
         return { kind = "dandy", c = c, F = F_DANDY, dark = true, text = C(240, 240, 244), dim = C(196, 196, 204), size = 18, rowH = 40,
@@ -4956,11 +4937,11 @@ function makeTokens()
     return { kind = "aero", c = c, F = F_AERO, dark = dark, text = c.text, dim = c.text:Lerp(c.top, 0.35), size = 16,
         rowH = 34, accent = c.accent, panelT = dark and 0.3 or 0.5, minW = 560, minH = 380 }
 end
-function fieldBg() return T.dark and T.c.panel:Lerp(WHITE, 0.1) or WHITE end
-function okCol() return (T.kind == "xmb" or T.dark) and C(130, 245, 165) or C(10, 110, 50) end
-function errCol() return (T.kind == "xmb" or T.dark) and C(255, 140, 140) or C(170, 25, 25) end
+local function fieldBg() return T.dark and T.c.panel:Lerp(WHITE, 0.1) or WHITE end
+local function okCol() return (T.kind == "xmb" or T.dark) and C(130, 245, 165) or C(10, 110, 50) end
+local function errCol() return (T.kind == "xmb" or T.dark) and C(255, 140, 140) or C(170, 25, 25) end
 
-function aeroTheme(name)
+local function aeroTheme(name)
     local a = T.accent
     if name == "blue" then return { top = a:Lerp(WHITE, 0.55), bot = a, stroke = a:Lerp(BLACK, 0.45), text = WHITE, st = 0.55 }
     elseif name == "green" then return { top = C(175, 240, 120), bot = C(35, 160, 50), stroke = C(15, 105, 30), text = WHITE, st = 0.55 }
@@ -4974,7 +4955,7 @@ function aeroTheme(name)
 end
 
 -- Aero keeps everything lowercase
-function lowerize(o)
+local function lowerize(o)
     if o:IsA("TextLabel") or o:IsA("TextButton") then
         local busy = false
         local function f()
@@ -4989,7 +4970,7 @@ function lowerize(o)
     end
 end
 
-function closePopup()
+local function closePopup()
     local cb = popupClose
     popupClose = nil
     if popup then popup:Destroy(); popup = nil end
@@ -4999,12 +4980,12 @@ end
 --#endregion ui-core
 --#region ui-sounds
 -- UI sounds (each skin has its own set; toggle + volume in Appearance)
-sndHolder = Instance.new("Folder")
+local sndHolder = Instance.new("Folder")
 sndHolder.Name = "TonyScriptPalaceSounds"
 sndHolder.Parent = guiParent()
 
 -- { id, volume, speed }
-SOUND_SETS = {
+local SOUND_SETS = {
     -- Dandy's World: the game's own UI sounds
     dandy = {
         hover  = { "rbxassetid://6895079853", 0.3, 1 },
@@ -5063,14 +5044,14 @@ SOUND_SETS = {
         boot   = { "", 0.6, 1, "Windows XP Startup.wav" },
     },
 }
-SND_FALLBACK = {  -- used only if a Dandy or Aero asset id fails to load
+local SND_FALLBACK = {  -- used only if a Dandy or Aero asset id fails to load
     hover = "rbxasset://sounds/clickfast.wav", click = "rbxasset://sounds/button.wav",
     on = "rbxasset://sounds/electronicpingshort.wav", off = "rbxasset://sounds/electronicpingshort.wav",
     open = "rbxasset://sounds/snap.mp3", tick = "rbxasset://sounds/switch.wav",
     ok = "rbxasset://sounds/victory.wav", err = "rbxasset://sounds/bass.mp3",
     close = "rbxasset://sounds/clickfast.wav", option = "rbxasset://sounds/snap.mp3",
 }
-uiSnd = { dandy = {}, aero = {}, xmb = {}, xp = {} }
+local uiSnd = { dandy = {}, aero = {}, xmb = {}, xp = {} }
 for style, set in pairs(SOUND_SETS) do
     for k, d in pairs(set) do
         local snd = Instance.new("Sound")
@@ -5085,9 +5066,9 @@ for style, set in pairs(SOUND_SETS) do
         end
     end
 end
-SOUND_ALIAS = { ng = "err", close = "click", option = "open" }  -- a skin without that sound uses this one
-soundReady = { xmb = {}, xp = {} }  -- [style][sound name] = true once its file is loaded
-function ui(name)
+local SOUND_ALIAS = { ng = "err", close = "click", option = "open" }  -- a skin without that sound uses this one
+local soundReady = { xmb = {}, xp = {} }  -- [style][sound name] = true once its file is loaded
+local function ui(name)
     if not S.sounds or S.sfxVol <= 0 then return end
     local set = SOUND_SETS[S.style]
     if set and not set[name] then name = SOUND_ALIAS[name] or name end
@@ -5104,7 +5085,7 @@ function ui(name)
 end
 
 -- play a sound as soon as its file has downloaded (used for the boot sounds)
-function uiWhenReady(name)
+local function uiWhenReady(name)
     local st = S.style
     if not soundReady[st] then return end
     task.spawn(function()
@@ -5116,9 +5097,9 @@ end
 
 -- download the XMB sound files once, cache them in workspace/TonyScriptPalace/Sounds,
 -- then point the XMB sounds at them. Needs an executor with request/HttpGet + writefile + getcustomasset.
-SND_DIR = ROOT_DIR .. "/Sounds"
-XMB_SOUND_URL = "https://file.garden/aRURJecPmmjLUziC/Sound%20Effects%20-%20XMB%20-%20PlayStation%203/"
-XP_SOUND_URL  = "https://file.garden/aRURJecPmmjLUziC/Windows%20XP%20Sounds/"
+local SND_DIR = ROOT_DIR .. "/Sounds"
+local XMB_SOUND_URL = "https://file.garden/aRURJecPmmjLUziC/Sound%20Effects%20-%20XMB%20-%20PlayStation%203/"
+local XP_SOUND_URL  = "https://file.garden/aRURJecPmmjLUziC/Windows%20XP%20Sounds/"
 task.spawn(function()
     local getAsset = env.getcustomasset or env.getsynasset
     if not (getAsset and writefile) then return end
@@ -5160,7 +5141,7 @@ end)
 --#endregion ui-sounds
 --#region widgets
 -- Widgets (shared by both skins, drawn from tokens)
-function Label(parent, text, pos, size, o)
+local function Label(parent, text, pos, size, o)
     o = o or {}
     return New("TextLabel", {
         BackgroundTransparency = 1, Text = text, Font = o.font or T.F.semi, TextSize = o.size or T.size,
@@ -5169,7 +5150,7 @@ function Label(parent, text, pos, size, o)
     }, parent)
 end
 
-function Button(parent, text, size, style, cb, o)
+local function Button(parent, text, size, style, cb, o)
     o = o or {}
     local b, lb
     if T.kind == "dandy" then
@@ -5235,7 +5216,7 @@ function Button(parent, text, size, style, cb, o)
     return b, lb
 end
 
-function Input(parent, text, ph, commit, size)
+local function Input(parent, text, ph, commit, size)
     local aero = T.kind == "aero"
     local xp = T.kind == "xp"
     local dandy = T.kind == "dandy"
@@ -5258,7 +5239,7 @@ function Input(parent, text, ph, commit, size)
     return tb
 end
 
-function ToggleW(holder, value, cb)
+local function ToggleW(holder, value, cb)
     local obj = { value = value and true or false }
     local aero = T.kind == "aero"
     local g, knob, txt, chk1, chk2
@@ -5307,7 +5288,7 @@ function ToggleW(holder, value, cb)
     return obj
 end
 
-function Slider(parent, min, max, dec, init, cb, step, free)
+local function Slider(parent, min, max, dec, init, cb, step, free)
     local aero = T.kind == "aero"
     local xp = T.kind == "xp"
     local dandy = T.kind == "dandy"
@@ -5402,7 +5383,7 @@ function Slider(parent, min, max, dec, init, cb, step, free)
     return obj
 end
 
-function openMenu(anchor, options, onPick)
+local function openMenu(anchor, options, onPick)
     closePopup()
     ui("option")
     local sc = UIScaleObj.Scale
@@ -5446,7 +5427,7 @@ function openMenu(anchor, options, onPick)
 end
 
 -- official highlight colors used in the game (name, r, g, b)
-GAME_COLORS = {
+local GAME_COLORS = {
     { "Astro Blue", 120, 200, 255 }, { "Brusha Purple", 153, 81, 137 }, { "Dessa Green", 0, 255, 38 }, { "Eclipse Blue", 150, 180, 220 }, { "Soulvester Blue", 129, 215, 180 },
     { "Vee Green", 100, 255, 97 }, { "Egg Radar Pink", 255, 192, 203 }, { "Festive Lights Yellow", 255, 215, 0 },
     { "Fishing Rod Blue", 61, 151, 220 }, { "Memory Locket Green", 168, 255, 160 }, { "Party Popper Pink", 255, 132, 203 },
@@ -5458,7 +5439,7 @@ GAME_COLORS = {
     { "Default Black", 17, 17, 17 }, { "Default Gray", 160, 160, 160 }, { "Default White", 255, 255, 255 },
 }
 
-function openColorPicker(c)
+local function openColorPicker(c)
     closePopup()
     ui("option")
     local aero = T.kind == "aero"
@@ -5590,9 +5571,9 @@ end
 --#endregion widgets
 --#region row-builders
 -- Row builders (one per control type)
-function padX() return (T.kind == "xmb" and 42) or (T.kind == "dandy" and 12) or 6 end
+local function padX() return (T.kind == "xmb" and 42) or (T.kind == "dandy" and 12) or 6 end
 
-function rowFor(parent, order, h)
+local function rowFor(parent, order, h)
     local row = New("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0,
         Size = UDim2.new(1, 0, 0, h or T.rowH), LayoutOrder = order }, parent)
     local hintTxt = UI.curHint
@@ -5625,7 +5606,7 @@ function rowFor(parent, order, h)
 end
 
 -- label on the left, a holder frame on the right. flex = scale width, otherwise fixed pixel width
-function layoutRow(row, text, flex, fixedW)
+local function layoutRow(row, text, flex, fixedW)
     local x = padX()
     local lab, holder
     local hgt = -8
@@ -5789,7 +5770,7 @@ builders.list = function(parent, c, order)
     end
 end
 
-function warnCol() return (T.kind == "xmb" or T.dark) and C(255, 205, 90) or C(185, 105, 0) end
+local function warnCol() return (T.kind == "xmb" or T.dark) and C(255, 205, 90) or C(185, 105, 0) end
 
 builders.readout = function(parent, c, order)
     local row = rowFor(parent, order)
@@ -6073,17 +6054,17 @@ end
 
 -- LAYOUT: every tab is a "section rail" (left) + one section at a time (middle) + an optional pinned pane (right, wide windows only).
 -- Nothing collapses and nothing needs a long scroll: pick a section in the rail and its controls fill the page.
-makePane = nil -- used by the skins, the library adapter and buildGui
+local makePane, clearGui, loadSections   -- used by the skins, the library adapter and buildGui
 do
-RAIL_W, PIN_W, PIN_MIN = 176, 300, 380                  -- rail width, pinned pane width, minimum width kept for the middle
-SIDE_W = { dandy = 200, aero = 190, xmb = 190, xp = 190 }   -- how much of the window the skin's own tab column takes
+local RAIL_W, PIN_W, PIN_MIN = 176, 300, 380                  -- rail width, pinned pane width, minimum width kept for the middle
+local SIDE_W = { dandy = 200, aero = 190, xmb = 190, xp = 190 }   -- how much of the window the skin's own tab column takes
 
-function designW()
+local function designW()
     local w = (Win and UIScaleObj) and (Win.AbsoluteSize.X / math.max(UIScaleObj.Scale, 0.1)) or 0
     if w < 200 then w = S.fullscreen and 1280 or (S.win[S.style] and S.win[S.style].w) or 900 end
     return w
 end
-function canPin() return designW() - (SIDE_W[T.kind] or 190) >= RAIL_W + PIN_W + PIN_MIN end
+local function canPin() return designW() - (SIDE_W[T.kind] or 190) >= RAIL_W + PIN_W + PIN_MIN end
 
 function clearGui(o) for _, ch in ipairs(o:GetChildren()) do if ch:IsA("GuiObject") then ch:Destroy() end end end
 
@@ -6115,7 +6096,7 @@ function makePane()
     end)
 end
 
-function layoutPane(showRail, showPin)
+local function layoutPane(showRail, showPin)
     local rw = showRail and RAIL_W or 0
     local pw = showPin and PIN_W or 0
     Rail.Visible = showRail
@@ -6126,7 +6107,7 @@ function layoutPane(showRail, showPin)
     Content.Size = UDim2.new(1, -(rw + pw), 1, 0)
 end
 
-function renderSection(parent, sec, order)
+local function renderSection(parent, sec, order)
     local kind = T.kind
     local f = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order }, parent)
     if kind == "aero" then
@@ -6170,7 +6151,7 @@ function loadSections(tab)
     return secs
 end
 
-function buildRail(navs, selKey, tabId)
+local function buildRail(navs, selKey, tabId)
     clearGui(Rail)
     local lastGroup, order = nil, 0
     for _, sec in ipairs(navs) do
@@ -6223,7 +6204,7 @@ end
 
 end   -- layout internals
 
-function refreshPage()
+local function refreshPage()
     local y = Content and Content.CanvasPosition.Y or 0
     renderPage()
     task.defer(function() if Content and Content.Parent then Content.CanvasPosition = Vector2.new(0, y) end end)
@@ -6240,7 +6221,7 @@ function UI.catName(cat)
     return ""
 end
 
-function setTab(id)
+local function setTab(id)
     if UI.current == id then return end
     local tab
     for _, t in ipairs(UI.tabs) do if t.id == id then tab = t end end
@@ -6305,10 +6286,10 @@ function UI.applySide()
     if UI.sideTitle then UI.sideTitle.Text = UI.catName() end
 end
 
-function statusDefault() return "Press " .. S.keybind .. " to hide or show the hub." end
+local function statusDefault() return "Press " .. S.keybind .. " to hide or show the hub." end
 function UI.hintOn(msg) if StatusLbl then StatusLbl.Text = msg; StatusLbl.TextColor3 = T.text end end
 function UI.hintOff() if StatusLbl then StatusLbl.Text = statusDefault(); StatusLbl.TextColor3 = T.dim end end
-statusToken = 0
+local statusToken = 0
 function toast(msg, kind)
     statusToken += 1
     local tok = statusToken
@@ -6333,9 +6314,9 @@ Auto.onChaseQuit = function(msg) toast(msg, "info") end
 -- EXTERNAL LIBRARY (optional, loaded safely)
 --   Dandy's World API Library : live game info (floor, machines, players alive...) for the World tab. Loads in the background.
 ----------------------------------------------------------------------
-fetchLib = nil -- download + run a library, returns (lib) or (nil, reason)
+local fetchLib   -- download + run a library, returns (lib) or (nil, reason)
 do
-loadStr = loadstring or env.loadstring
+local loadStr = loadstring or env.loadstring
 
 function fetchLib(url)
     if not loadStr then return nil, "this executor has no loadstring" end
@@ -6350,8 +6331,8 @@ end
 
 end
 
-API_URL = "https://raw.githubusercontent.com/did-i-leave-the-oven-on/Dandy-s-World-API-Library/refs/heads/main/Dandy's%20World%20API%20Library.lua"
-DWAPI = { lib = env.TonyScriptPalaceAPI, state = "idle" }   -- the library can only be loaded once per session, so the table is kept in env
+local API_URL = "https://raw.githubusercontent.com/did-i-leave-the-oven-on/Dandy-s-World-API-Library/refs/heads/main/Dandy's%20World%20API%20Library.lua"
+local DWAPI = { lib = env.TonyScriptPalaceAPI, state = "idle" }   -- the library can only be loaded once per session, so the table is kept in env
 function DWAPI.load()
     if DWAPI.lib or DWAPI.state == "loading" then return end
     DWAPI.state = "loading"
@@ -6364,7 +6345,7 @@ function DWAPI.load()
         end
     end)
 end
-function apiField(fn)   -- a safe readout for the World tab
+local function apiField(fn)   -- a safe readout for the World tab
     return function()
         local api = DWAPI.lib
         if not api then
@@ -6381,10 +6362,10 @@ end
 --#endregion libs
 --#region page-esp
 -- Pages
-ITEM_LABELS = { Gumball = "Gumballs", BonBon = "BonBon", ChristmasCookie = "ChristmasCookie", DandyCorn = "DandyCorn", DandyEasterEggs = "DandyEasterEggs", BallOfWax = "BallOfWax" }   -- internal name -> shown name (anything else gets spaces put in: AlarmClock -> Alarm Clock)
-function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) end
+local ITEM_LABELS = { Gumball = "Gumballs", BonBon = "BonBon", ChristmasCookie = "ChristmasCookie", DandyCorn = "DandyCorn", DandyEasterEggs = "DandyEasterEggs", BallOfWax = "BallOfWax" }   -- internal name -> shown name (anything else gets spaces put in: AlarmClock -> Alarm Clock)
+local function pretty(n) return ITEM_LABELS[n] or (n:gsub("(%l)(%u)", "%1 %2")) end
 
-function resetESPColors()
+local function resetESPColors()
     local c, d = Cfg.Categories, DEF.Categories
     for _, k in ipairs({ "Players", "Twisteds", "Ichorlings", "GlitterGlue", "Tendrils", "BlotHands", "RazzleVines", "IchorPuddles", "GigiStash", "Elevator", "Doors", "Bookshelves", "StarPillows" }) do c[k].Color = d[k].Color end
     c.Elevator.FakeColor = d.Elevator.FakeColor
@@ -6398,7 +6379,7 @@ function resetESPColors()
     espDirty = true
 end
 
-function buildESPPage()
+local function buildESPPage()
     local cats = Cfg.Categories
     local function tg(text, tbl, key)
         return { t = "toggle", text = text, get = function() return tbl[key] end, set = function(v) tbl[key] = v; espDirty = true end }
@@ -6541,305 +6522,10 @@ function buildESPPage()
 end
 
 --#endregion page-esp
---#region page-twistedvis
--- Twisted Visualizers: radius discs (Hearing / Instant / Kill / Vision), a Line Of Sight beam, and Chasing Indicators (screen arrows toward each Twisted).
--- Everything lives in this do-block and is reached through Features.twistedvis (build / unload / serialize / apply), so it adds no top-level locals.
-do
-    local TV = {
-        Radii = {
-            HearingRadius = { On = false, Color = C(255, 200, 0),   Label = "Hearing Radius" },
-            InstantRadius = { On = false, Color = C(255, 0, 0),     Label = "Instant Radius" },
-            KillRadius    = { On = false, Color = C(255, 0, 255),   Label = "Kill Radius" },
-            VisionRadius  = { On = false, Color = C(0, 170, 255),   Label = "Vision Radius" },
-            LineOfSight   = { On = false, Color = C(0, 255, 128),   Label = "Line Of Sight" },
-        },
-        Transparency = 0.8, ThroughWalls = true, IncludeDessa = true,
-        Chase = { Mode = "Off", Color = C(255, 60, 60), Size = 28, Ring = 180, Distance = false, HideOnScreen = false, IncludeDessa = true },
-    }
-    local RADII_ORDER = { "HearingRadius", "VisionRadius", "InstantRadius", "KillRadius", "LineOfSight" }   -- biggest discs first so the small ones draw on top
-    local CHASE_MODES = { "Off", "While Chased", "Always" }
-
-    -- ------------------------------------------------------------ finding Twisteds and reading their stats
-    local function monsters()
-        local out = {}
-        local cr = Workspace:FindFirstChild("CurrentRoom")
-        for _, room in ipairs(cr and cr:GetChildren() or {}) do
-            local mons = room:FindFirstChild("Monsters")
-            for _, m in ipairs(mons and mons:GetChildren() or {}) do
-                if m:IsA("Model") then out[#out + 1] = m end
-            end
-        end
-        return out
-    end
-    local function isDessa(m) return m.Name:lower():find("dessa", 1, true) ~= nil end
-    local function flagOn(m, name)
-        if m:GetAttribute(name) == true then return true end
-        local v = m:FindFirstChild(name)
-        return v ~= nil and v:IsA("BoolValue") and v.Value == true
-    end
-    local function chasesMe(m)    -- true: after me. false: after someone else. nil: it doesn't say
-        local cv = m:FindFirstChild("ChasingValue")
-        local v = cv and cv:IsA("ObjectValue") and cv.Value or nil
-        if not v then return nil end
-        local ch = LP.Character
-        return v == LP or v == ch or (ch ~= nil and v:IsDescendantOf(ch)) or v.Name == LP.Name
-    end
-    local function isChasingMe(m) return flagOn(m, "Chasing") and not flagOn(m, "LostInterest") and chasesMe(m) ~= false end
-
-    -- A stat can be an Attribute on the Twisted, a NumberValue child, or live inside a Folder / Configuration on it. Where it was found is remembered per Twisted.
-    local where = setmetatable({}, { __mode = "k" })   -- [model] = { [stat] = function() return number end }
-    local function numOf(v) if typeof(v) == "number" then return v end; if typeof(v) == "Instance" and (v:IsA("NumberValue") or v:IsA("IntValue")) then return v.Value end end
-    local function locate(m, stat)
-        local a = m:GetAttribute(stat)
-        if typeof(a) == "number" or typeof(a) == "boolean" then return function() return m:GetAttribute(stat) end end
-        local c = m:FindFirstChild(stat)
-        if c and (c:IsA("ValueBase")) then return function() return c.Value end end
-        for _, k in ipairs(m:GetChildren()) do
-            if k:IsA("Folder") or k:IsA("Configuration") then
-                local ka = k:GetAttribute(stat)
-                if typeof(ka) == "number" or typeof(ka) == "boolean" then return function() return k:GetAttribute(stat) end end
-                local kc = k:FindFirstChild(stat)
-                if kc and kc:IsA("ValueBase") then return function() return kc.Value end end
-            end
-        end
-        return nil
-    end
-    local function stat(m, name)
-        local w = where[m]; if not w then w = {}; where[m] = w end
-        local f = w[name]
-        if f == nil then f = locate(m, name) or false; w[name] = f; if f == false then w[name .. "_t"] = os.clock() end end
-        if f == false then
-            if os.clock() - (w[name .. "_t"] or 0) > 3 then w[name] = nil end      -- not found: look again every few seconds (the stat may be added later)
-            return nil
-        end
-        local ok, v = pcall(f)
-        if not ok then w[name] = nil; return nil end
-        return v
-    end
-    local function rootOf(m)
-        return m.PrimaryPart or m:FindFirstChild("HumanoidRootPart") or m:FindFirstChildWhichIsA("BasePart", true)
-    end
-
-    -- ------------------------------------------------------------ radius discs
-    local holder
-    local live = {}          -- [model] = { [stat] = adornment }
-    local function ensureHolder()
-        if holder and holder.Parent then return holder end
-        holder = Instance.new("Folder"); holder.Name = "TonyScriptPalaceVisuals"; holder.Parent = guiParent()
-        return holder
-    end
-    local function dropModel(m)
-        local t = live[m]; if not t then return end
-        for _, a in pairs(t) do pcall(function() a:Destroy() end) end
-        live[m] = nil
-    end
-    local function anyRadiusOn()
-        for _, k in ipairs(RADII_ORDER) do if TV.Radii[k].On then return true end end
-        return false
-    end
-    local function applyLook(a, cfg, z)
-        a.Color3 = cfg.Color; a.Transparency = TV.Transparency; a.AlwaysOnTop = TV.ThroughWalls; a.ZIndex = z
-    end
-    local function sweepRadii()
-        local seen = {}
-        if anyRadiusOn() then
-            local f = ensureHolder()
-            for _, m in ipairs(monsters()) do
-                if TV.IncludeDessa or not isDessa(m) then
-                    local root = rootOf(m)
-                    if root then
-                        seen[m] = true
-                        local t = live[m]; if not t then t = {}; live[m] = t end
-                        local hum = m:FindFirstChildOfClass("Humanoid")
-                        local drop = root.Size.Y / 2 + (hum and hum.HipHeight or 0)      -- from the root part down to the floor under it
-                        for i, key in ipairs(RADII_ORDER) do
-                            local cfg, a, v = TV.Radii[key], t[key], nil
-                            if cfg.On then v = stat(m, key) end
-                            if cfg.On and typeof(v) == "number" and v > 0 then
-                                if not a or not a.Parent then
-                                    a = Instance.new("CylinderHandleAdornment"); a.Name = key; a.Parent = f; t[key] = a
-                                end
-                                a.Adornee = root
-                                if key == "LineOfSight" then      -- a thin beam straight ahead of the Twisted, at the height of its root part
-                                    a.Radius, a.Height = 0.35, v
-                                    a.CFrame = CFrame.new(0, 0, -v / 2)
-                                else                              -- a flat disc on the floor under it
-                                    a.Radius, a.Height = v, 0.15
-                                    a.CFrame = CFrame.new(0, -drop + 0.1, 0) * CFrame.Angles(math.pi / 2, 0, 0)
-                                end
-                                applyLook(a, cfg, i)
-                            elseif a then
-                                pcall(function() a:Destroy() end); t[key] = nil
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        for m in pairs(live) do if not seen[m] or not m.Parent then dropModel(m) end end
-    end
-
-    -- ------------------------------------------------------------ chasing indicators
-    local cgui, arrows = nil, {}     -- arrows[model] = { frame, label }
-    local function ensureGui()
-        if cgui and cgui.Parent then return cgui end
-        cgui = Instance.new("ScreenGui"); cgui.Name = "TSP_ChasingIndicators"; cgui.ResetOnSpawn = false; cgui.IgnoreGuiInset = true; cgui.DisplayOrder = 40
-        cgui.Parent = guiParent()
-        return cgui
-    end
-    local function dropArrow(m) local a = arrows[m]; if a then pcall(function() a.frame:Destroy() end); arrows[m] = nil end end
-    local function makeArrow()
-        local fr = Instance.new("Frame"); fr.BackgroundTransparency = 1; fr.AnchorPoint = Vector2.new(0.5, 0.5); fr.Parent = ensureGui()
-        local tri = Instance.new("TextLabel"); tri.BackgroundTransparency = 1; tri.Size = UDim2.fromScale(1, 1); tri.Text = "▲"; tri.Font = Enum.Font.GothamBlack
-        tri.TextScaled = true; tri.TextStrokeTransparency = 0; tri.TextStrokeColor3 = Color3.new(0, 0, 0); tri.Parent = fr
-        local dist = Instance.new("TextLabel"); dist.BackgroundTransparency = 1; dist.AnchorPoint = Vector2.new(0.5, 0); dist.Position = UDim2.new(0.5, 0, 1, 0); dist.Size = UDim2.new(2, 0, 0.5, 0)
-        dist.Font = Enum.Font.GothamBold; dist.TextScaled = true; dist.TextStrokeTransparency = 0.3; dist.Parent = fr
-        return { frame = fr, tri = tri, dist = dist }
-    end
-    local function stepChase()
-        local C_ = TV.Chase
-        local cam = Workspace.CurrentCamera
-        if C_.Mode == "Off" or not cam then
-            if next(arrows) then for m in pairs(arrows) do dropArrow(m) end end
-            return
-        end
-        local vp = cam.ViewportSize
-        local center = vp / 2
-        local ring = math.min(C_.Ring, math.min(vp.X, vp.Y) / 2 - C_.Size)
-        local seen = {}
-        for _, m in ipairs(monsters()) do
-            if (C_.IncludeDessa or not isDessa(m)) and (C_.Mode == "Always" or isChasingMe(m)) then
-                local ok, pos = pcall(function() return m:GetPivot().Position end)
-                if ok then
-                    local scr, onScreen = cam:WorldToViewportPoint(pos)
-                    if not (C_.HideOnScreen and onScreen and scr.Z > 0) then
-                        seen[m] = true
-                        local a = arrows[m]; if not a then a = makeArrow(); arrows[m] = a end
-                        local lv = cam.CFrame:VectorToObjectSpace(pos - cam.CFrame.Position)
-                        local ang = math.atan2(lv.X, -lv.Z)          -- 0 = straight ahead, positive = to your right
-                        a.frame.Size = UDim2.fromOffset(C_.Size, C_.Size)
-                        a.frame.Position = UDim2.fromOffset(center.X + math.sin(ang) * ring, center.Y - math.cos(ang) * ring)
-                        a.tri.Rotation = math.deg(ang)
-                        local col = C_.Color
-                        a.tri.TextColor3, a.dist.TextColor3 = col, col
-                        a.dist.Visible = C_.Distance
-                        if C_.Distance then
-                            local me = LP.Character and LP.Character:GetPivot().Position or cam.CFrame.Position
-                            a.dist.Text = string.format("%d", math.floor((pos - me).Magnitude + 0.5))
-                        end
-                    end
-                end
-            end
-        end
-        for m in pairs(arrows) do if not seen[m] then dropArrow(m) end end
-    end
-
-    -- ------------------------------------------------------------ loops
-    local acc = 0
-    connect(RunService.Heartbeat, function(dt)
-        acc += dt
-        if acc >= 0.2 then acc = 0; pcall(sweepRadii) end
-    end)
-    connect(RunService.RenderStepped, function() pcall(stepChase) end)
-
-    -- ------------------------------------------------------------ stat dump (so the real names and where they live can be checked)
-    local function dumpStats()
-        local list = monsters()
-        if #list == 0 then print("[TonyScriptPalace] No Twisteds in the room right now."); toast("No Twisteds in the room right now.", "info"); return end
-        for _, m in ipairs(list) do
-            local parts = {}
-            for k, v in pairs(m:GetAttributes()) do parts[#parts + 1] = k .. "=" .. tostring(v) end
-            for _, c in ipairs(m:GetChildren()) do
-                if c:IsA("ValueBase") then parts[#parts + 1] = c.Name .. "(" .. c.ClassName .. ")=" .. tostring(c.Value)
-                elseif c:IsA("Folder") or c:IsA("Configuration") then
-                    for k, v in pairs(c:GetAttributes()) do parts[#parts + 1] = c.Name .. "." .. k .. "=" .. tostring(v) end
-                    for _, cc in ipairs(c:GetChildren()) do if cc:IsA("ValueBase") then parts[#parts + 1] = c.Name .. "." .. cc.Name .. "=" .. tostring(cc.Value) end end
-                end
-            end
-            table.sort(parts)
-            print("[TonyScriptPalace] " .. m.Name .. ": " .. table.concat(parts, ", "))
-        end
-        toast("Twisted stats printed to the console (F9).", "ok")
-    end
-
-    -- ------------------------------------------------------------ page
-    local function build()
-        local secs = {}
-        local rc = { { t = "text", text = "Draws each Twisted's ranges around it, read live from the Twisted itself. Hearing, Vision, Instant and Kill are flat discs on the floor under it (the radius is in studs). Line Of Sight is a beam straight ahead of it. A range only shows up if the Twisted actually has that stat, so a Twisted without a Kill Radius just doesn't get one." } }
-        for _, key in ipairs(RADII_ORDER) do
-            local cfg = TV.Radii[key]
-            rc[#rc + 1] = { t = "toggle", text = "Show " .. cfg.Label, get = function() return cfg.On end, set = function(v) cfg.On = v end }
-            rc[#rc + 1] = { t = "color", text = cfg.Label .. " Color", rainbow = false, get = function() return cfg.Color end, set = function(v) cfg.Color = v end,
-                default = function() return ({ HearingRadius = C(255, 200, 0), InstantRadius = C(255, 0, 0), KillRadius = C(255, 0, 255), VisionRadius = C(0, 170, 255), LineOfSight = C(0, 255, 128) })[key] end }
-        end
-        rc[#rc + 1] = { t = "slider", text = "Transparency", min = 0.3, max = 0.95, dec = 2, get = function() return TV.Transparency end, set = function(v) TV.Transparency = v end }
-        rc[#rc + 1] = { t = "toggle", text = "Show Through Walls", get = function() return TV.ThroughWalls end, set = function(v) TV.ThroughWalls = v end }
-        rc[#rc + 1] = { t = "toggle", text = "Include Twisted Dessa", get = function() return TV.IncludeDessa end, set = function(v) TV.IncludeDessa = v end }
-        rc[#rc + 1] = { t = "buttons", items = { { label = "Print Twisted Stats To Console", fn = dumpStats } } }
-        rc[#rc + 1] = { t = "text", text = "If a range never shows up, press the button while a Twisted is around and check the console (F9). It lists every stat the game put on each Twisted, so you can see the real names." }
-        secs[#secs + 1] = { title = "Radius Visualizers", controls = rc }
-
-        local ch = TV.Chase
-        secs[#secs + 1] = { title = "Chasing Indicators", controls = {
-            { t = "text", text = "An arrow around the middle of your screen pointing at each Twisted. While Chased: one arrow per Twisted that is after you, and it stays until that Twisted stops chasing you (or loses interest), instead of fading out like the game's spotted arrow. Always: one for every Twisted on the floor, chasing or not, so you always know which way each one is." },
-            { t = "dropdown", text = "Show Arrows", get = function() return ch.Mode end, options = function() return CHASE_MODES end, set = function(o) ch.Mode = o end },
-            { t = "color", text = "Arrow Color", rainbow = false, get = function() return ch.Color end, set = function(v) ch.Color = v end, default = function() return C(255, 60, 60) end },
-            { t = "slider", text = "Arrow Size", min = 12, max = 80, dec = 0, get = function() return ch.Size end, set = function(v) ch.Size = v end },
-            { t = "slider", text = "Distance From Center", min = 60, max = 450, dec = 0, get = function() return ch.Ring end, set = function(v) ch.Ring = v end },
-            { t = "toggle", text = "Show Distance Under Arrow", get = function() return ch.Distance end, set = function(v) ch.Distance = v end },
-            { t = "toggle", text = "Hide Arrow When The Twisted Is On Screen", get = function() return ch.HideOnScreen end, set = function(v) ch.HideOnScreen = v end },
-            { t = "toggle", text = "Include Twisted Dessa", get = function() return ch.IncludeDessa end, set = function(v) ch.IncludeDessa = v end },
-        } }
-        return secs
-    end
-
-    -- ------------------------------------------------------------ configs
-    local function serialize()
-        local r = {}
-        for k, cfg in pairs(TV.Radii) do r[k] = { On = cfg.On, Color = hexOf(cfg.Color) } end
-        local c = TV.Chase
-        return { Radii = r, Transparency = TV.Transparency, ThroughWalls = TV.ThroughWalls, IncludeDessa = TV.IncludeDessa,
-            Chase = { Mode = c.Mode, Color = hexOf(c.Color), Size = c.Size, Ring = c.Ring, Distance = c.Distance, HideOnScreen = c.HideOnScreen, IncludeDessa = c.IncludeDessa } }
-    end
-    local function apply(d)
-        if type(d) ~= "table" then return end
-        if type(d.Radii) == "table" then
-            for k, cfg in pairs(TV.Radii) do
-                local s = d.Radii[k]
-                if type(s) == "table" then
-                    if type(s.On) == "boolean" then cfg.On = s.On end
-                    cfg.Color = colorOf(s.Color) or cfg.Color
-                end
-            end
-        end
-        if type(d.Transparency) == "number" then TV.Transparency = math.clamp(d.Transparency, 0.3, 0.95) end
-        if type(d.ThroughWalls) == "boolean" then TV.ThroughWalls = d.ThroughWalls end
-        if type(d.IncludeDessa) == "boolean" then TV.IncludeDessa = d.IncludeDessa end
-        local c, s = TV.Chase, d.Chase
-        if type(s) == "table" then
-            if table.find(CHASE_MODES, s.Mode) then c.Mode = s.Mode end
-            c.Color = colorOf(s.Color) or c.Color
-            if type(s.Size) == "number" then c.Size = math.clamp(s.Size, 12, 80) end
-            if type(s.Ring) == "number" then c.Ring = math.clamp(s.Ring, 60, 450) end
-            if type(s.Distance) == "boolean" then c.Distance = s.Distance end
-            if type(s.HideOnScreen) == "boolean" then c.HideOnScreen = s.HideOnScreen end
-            if type(s.IncludeDessa) == "boolean" then c.IncludeDessa = s.IncludeDessa end
-        end
-    end
-    local function unload()
-        for m in pairs(live) do dropModel(m) end
-        for m in pairs(arrows) do dropArrow(m) end
-        if holder then pcall(function() holder:Destroy() end) end
-        if cgui then pcall(function() cgui:Destroy() end) end
-    end
-    Features.twistedvis = { serialize = serialize, apply = apply, build = build, unload = unload }
-end
---#endregion page-twistedvis
-
 --#region page-movement
-function num(n) return ((string.format("%.2f", n):gsub("%.?0+$", ""))) end
+local function num(n) return ((string.format("%.2f", n):gsub("%.?0+$", ""))) end
 
-function buildMovementPage()
+local function buildMovementPage()
     local additive = Speed.Mode == "Additive"
     local stepSize = STEP_SIZES[Speed.Step] or 1
     local sdec = (stepSize == 1 and 0) or (stepSize == 2.5 and 1) or 2
@@ -6962,10 +6648,10 @@ function UI.buildCameraPage()
     }
 end
 
-cfgState = { name = "", box = nil }
+local cfgState = { name = "", box = nil }
 --#endregion page-movement
 --#region page-configs
-function buildConfigsPage()
+local function buildConfigsPage()
     if cfgState.name == "" and S.lastConfig ~= "" then cfgState.name = S.lastConfig end
     local function curName()
         local raw = cfgState.box and cfgState.box.Text or cfgState.name
@@ -7020,25 +6706,25 @@ end
 
 --#endregion page-configs
 --#region page-appearance
-buildAppearancePage = nil
+local buildAppearancePage
 do
-STYLE_NAMES = { dandy = "Dandy's World", aero = "Frutiger Aero", xmb = "XMB / PlayStation", xp = "Windows XP Luna" }
-STYLE_BY_NAME = {}
+local STYLE_NAMES = { dandy = "Dandy's World", aero = "Frutiger Aero", xmb = "XMB / PlayStation", xp = "Windows XP Luna" }
+local STYLE_BY_NAME = {}
 for k, v in pairs(STYLE_NAMES) do STYLE_BY_NAME[v] = k end
-STYLE_BLURB = {
+local STYLE_BLURB = {
     dandy = "The default. Dark striped panels, thick black outlines, yellow headers and orange sliders, like the game's own menus.",
     aero = "Glossy glass, bubbles and soft gradients. Everything is lowercase, because it's relaxed like that.",
     xmb = "The PlayStation cross media bar: moving waves, Proper Case and PS3 sounds.",
     xp = "Windows XP Luna: blue title bar, task pane groups and the real XP sounds. Nostalgia included.",
 }
-STYLE_DATA = {   -- skins that can be recolored
+local STYLE_DATA = {   -- skins that can be recolored
     dandy = { order = DANDY.order, presets = DANDY.presets, keys = DANDY.keys },
     aero  = { order = AERO_ORDER,  presets = AERO_PRESETS,  keys = AERO_KEYS },
     xmb   = { order = XMB_ORDER,   presets = XMB_PRESETS,   keys = XMB_KEYS },
     xp    = { order = XP_ORDER,    presets = XP_PRESETS,    keys = XP_KEYS },
 }
 
-function applyPreset(name)
+local function applyPreset(name)
     local d = STYLE_DATA[S.style]
     local p = d and d.presets[name]
     if not p then return end
@@ -7046,7 +6732,7 @@ function applyPreset(name)
     saveSettings(); buildGui()
 end
 
-function resetAppearance()
+local function resetAppearance()
     S.scale, S.fullscreen, S.orb, S.pos, S.keybind, S.startHidden = 1, false, true, nil, "RightShift", false
     S.sounds, S.sfxVol = true, 1
     S.win = defaultWin()
@@ -7148,9 +6834,9 @@ end
 end
 --#endregion page-appearance
 --#region page-world
-worldNames = ""     -- what is typed in the World tab's "Extra Names" box
+local worldNames = ""     -- what is typed in the World tab's "Extra Names" box
 -- game GUI tweaks (things drawn on your screen, rather than things in the map)
-function buildScreenPage()
+local function buildScreenPage()
     return {
         { title = "Adblocker", controls = {
             { t = "text", text = "Twisted Vee throws fake ad popups at you while she chases you. This blocks them so they never show up (and never make their sound). Turn it off and they come back. It only blocks the popups. The slowness her ability gives you still happens."},
@@ -7169,7 +6855,7 @@ function buildScreenPage()
     }
 end
 
-function buildWorldPage()
+local function buildWorldPage()
     return {
         { title = "Noclip", controls = {
             { t = "text", text = "Noclip here works on the map, not on you. With Everything Except Floors on (the default), it turns off collision for walls, props, machines and doors all over the map, not just the room you're in (the elevator too). Floors and stairs stay solid, and so do all characters (you, other players and Twisteds), so you won't fall through the world. The fake elevator in Labs gets turned off too, but the real one is left alone. Smart Floors (needs Everything Except Floors) also keeps solid any flat surface level with your feet, even if the game gave it a weird name. It finds them from where you stand, so it follows you between levels. Everything goes back to normal when you turn it off, and it starts off unless a config you load turns it on."},
@@ -7206,7 +6892,7 @@ end
 
 --#endregion page-world
 --#region page-automation
-function buildAutomationPage()
+local function buildAutomationPage()
     local smax = math.max(150, math.ceil(Stam.Peak / 5) * 5)      -- Auto Run slider maximum: the highest stamina seen so far
     local function fracInput(label, key)       -- a box you type a fraction into: 3/4, 1/2, 50% or 0.75
         return { t = "input", text = label, placeholder = "e.g. 3/4, 1/2, 50%", get = function() return Stam[key] end,
@@ -7694,7 +7380,7 @@ function Fun.Pur.sections()
     }
 end
 
-function buildFunPage()
+local function buildFunPage()
     local function tg(key, text) return { t = "toggle", text = text, get = function() return Fun[key] end, set = function(v) Fun[key] = v end } end
     local function tgR(key, text) return { t = "toggle", text = text, get = function() return Fun[key] end, set = function(v) Fun[key] = v; refreshPage() end } end
     local function dd(key, text, list, refresh)
@@ -7873,7 +7559,7 @@ function buildFunPage()
     return secs
 end
 
-function buildPursuerPage() return Fun.Pur.sections() end
+local function buildPursuerPage() return Fun.Pur.sections() end
 
 Features.fun = {
     serialize = function()
@@ -7924,23 +7610,23 @@ Features.fun = {
 -- script's DandyCustomizer folder is copied over once, automatically.
 -- Everything lives inside one function so it only costs the hub ONE top-level local (Luau allows 200).
 ----------------------------------------------------------------------
-Cust = (function(tspToast, tspRefresh)
-RS = ReplicatedStorage
-getasset = getcustomasset or getsynasset
-httpReq  = request or http_request or (syn and syn.request) or (http and http.request)
-alive = true
-conns = {}
-toast = tspToast
+local Cust = (function(tspToast, tspRefresh)
+local RS = ReplicatedStorage
+local getasset = getcustomasset or getsynasset
+local httpReq  = request or http_request or (syn and syn.request) or (http and http.request)
+local alive = true
+local conns = {}
+local toast = tspToast
 
 -- File system
-ROOT_DIR   = ROOT_DIR .. "/CharacterCustomizer"   -- inside the hub's own folder (the hub's ROOT_DIR is "TonyScriptPalace")
-CFG_DIR    = ROOT_DIR .. "/Configs"
-LIB_DIR    = ROOT_DIR .. "/Library"
-CACHE_DIR  = ROOT_DIR .. "/Cache"
-SETTINGS_F = ROOT_DIR .. "/settings.json"
+local ROOT_DIR   = ROOT_DIR .. "/CharacterCustomizer"   -- inside the hub's own folder (the hub's ROOT_DIR is "TonyScriptPalace")
+local CFG_DIR    = ROOT_DIR .. "/Configs"
+local LIB_DIR    = ROOT_DIR .. "/Library"
+local CACHE_DIR  = ROOT_DIR .. "/Cache"
+local SETTINGS_F = ROOT_DIR .. "/settings.json"
 
-function sanitize(s) return (tostring(s):gsub("[^%w%-_ ]", "_")) end
-function deepcopy(t)
+local function sanitize(s) return (tostring(s):gsub("[^%w%-_ ]", "_")) end
+local function deepcopy(t)
     if type(t) ~= "table" then return t end
     local o = {}
     for k, v in pairs(t) do o[k] = deepcopy(v) end
@@ -7974,7 +7660,7 @@ do
     end
 end
 
-S = {
+local S = {
     rules = {}, autoApply = false, autoConfig = "", keepWorking = true, localAnims = true,
     sources = { Lobby = true, Game = true, Roleplay = true }, captureOthers = true,
 }
@@ -7994,14 +7680,14 @@ do
         end
     end
 end
-function saveSettings() local j = jsonEncode(S); if j then writeFile(SETTINGS_F, j) end end
+local function saveSettings() local j = jsonEncode(S); if j then writeFile(SETTINGS_F, j) end end
 
 -- Two fixed folders inside TonyScriptPalace/CharacterCustomizer (no custom folders):
 --   Images    pictures for the 2D Character
 --   Textures  face textures and the voting icon
 -- Animation files (.rbxm) can sit in either one.
-FOLDERS = { "Images", "Textures" }
-function ensureDir(rel)               -- creates nested folders one segment at a time
+local FOLDERS = { "Images", "Textures" }
+local function ensureDir(rel)               -- creates nested folders one segment at a time
     local cur = ROOT_DIR
     for seg in tostring(rel):gmatch("[^/]+") do
         cur = cur .. "/" .. seg
@@ -8013,8 +7699,8 @@ for _, f in ipairs(FOLDERS) do ensureDir(f) end
 
 -- Writing MeshId only changes the property: the geometry is NOT reloaded, so the old shape just gets stretched.
 -- AssetService:CreateMeshPartAsync loads real geometry, and ApplyMesh copies it onto a live part (verified in-game).
-meshCache = {}
-function getMesh(id)   -- yields
+local meshCache = {}
+local function getMesh(id)   -- yields
     local c = meshCache[id]
     if c then return c end
     local ok, mp = pcall(function() return game:GetService("AssetService"):CreateMeshPartAsync(id) end)
@@ -8023,10 +7709,10 @@ function getMesh(id)   -- yields
 end
 
 -- Asset sources (rbxassetid / link / file in the Images or Textures folder)
-EXTS = nil
+local EXTS, classifyAsset, resolveAsset, resolveAnim, fileOptions, walkFiles, findFile
 do
 EXTS = { "png", "jpg", "jpeg", "webp", "bmp", "tga", "obj", "mesh", "rbxm", "rbxmx", "mp3", "ogg", "wav" }
-function hash(s)
+local function hash(s)
     local h = 5381
     for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
     return string.format("%08x%x", h, #s)
@@ -8046,7 +7732,7 @@ classifyAsset = function(src)
     return "file", src
 end
 
-function normalizeUrl(u)
+local function normalizeUrl(u)
     local id = u:match("drive%.google%.com/file/d/([%w%-_]+)")
     if not id and (u:find("drive.google.com", 1, true) or u:find("docs.google.com", 1, true)) then
         id = u:match("[?&]id=([%w%-_]+)")
@@ -8062,7 +7748,7 @@ function normalizeUrl(u)
     return u
 end
 
-function sniff(b)
+local function sniff(b)
     if b:sub(1, 4) == "\137PNG" then return "png" end
     if b:sub(1, 3) == "\255\216\255" then return "jpg" end
     if b:sub(1, 4) == "RIFF" and b:sub(9, 12) == "WEBP" then return "webp" end
@@ -8075,11 +7761,11 @@ function sniff(b)
     if b:sub(1, 8) == "version " then return "mesh" end
     return nil
 end
-function isHtml(b)
+local function isHtml(b)
     local h = b:sub(1, 300):lower()
     return h:find("<!doctype", 1, true) ~= nil or h:find("<html", 1, true) ~= nil
 end
-function fetch(url)
+local function fetch(url)
     if not httpReq then return nil, "This executor has no request()." end
     local ok, res = pcall(httpReq, { Url = url, Method = "GET", Headers = { ["User-Agent"] = "Mozilla/5.0" } })
     if not ok then return nil, "Request failed: " .. tostring(res) end
@@ -8088,13 +7774,13 @@ function fetch(url)
     if code >= 400 then return nil, "Server answered HTTP " .. code .. " (is the link public?)" end
     return res.Body or "", nil
 end
-function cachedPath(key)
+local function cachedPath(key)
     for _, e in ipairs(EXTS) do
         local p = CACHE_DIR .. "/" .. key .. "." .. e
         if fileExists(p) then return p end
     end
 end
-function fetchToCache(url, force)
+local function fetchToCache(url, force)
     local nurl = normalizeUrl(url)
     local key = hash(nurl)
     if not force then
@@ -8127,7 +7813,7 @@ walkFiles = function(folder, depth, out)
         end
     end
 end
-function registeredFiles()
+local function registeredFiles()
     local out = {}
     for _, folder in ipairs(FOLDERS) do            -- folders live inside TonyScriptPalace/CharacterCustomizer
         local all = {}
@@ -8146,9 +7832,9 @@ function registeredFiles()
     table.sort(out, function(a, b) return a.label:lower() < b.label:lower() end)
     return out
 end
-IMG = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
-MESHX = { obj = true, mesh = true }
-ANIMX = { rbxm = true, rbxmx = true }
+local IMG = { png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true }
+local MESHX = { obj = true, mesh = true }
+local ANIMX = { rbxm = true, rbxmx = true }
 fileOptions = function(kind, folder)          -- folder (optional): only list files from "Images" or "Textures"
     local out = {}
     local pre = folder and (folder:lower() .. "/")
@@ -8233,8 +7919,8 @@ end
 
 end
 -- Value encoding (everything in a config is plain JSON)
-ENUM_OF = { Material = "Material", Shape = "PartType", Face = "NormalId", ResampleMode = "ResamplerMode" }
-PK = {
+local ENUM_OF = { Material = "Material", Shape = "PartType", Face = "NormalId", ResampleMode = "ResamplerMode" }
+local PK = {
     Transparency = "num", Reflectance = "num", Color = "color", Color3 = "color", TextColor3 = "color",
     Material = "enum", Shape = "enum", Face = "enum", Size = "vec3", Offset = "vec3", Rotation = "vec3",
     MeshId = "asset", TextureID = "asset", Texture = "asset", Image = "asset",
@@ -8242,7 +7928,7 @@ PK = {
     LightInfluence = "num", PixelsPerStud = "num", Text = "string", ImageTransparency = "num",
     StudsPerTileU = "num", StudsPerTileV = "num", Brightness = "num", Range = "num",
 }
-function decV(prop, enc)
+local function decV(prop, enc)
     local k = PK[prop]
     if k == "num" then return tonumber(enc)
     elseif k == "bool" then return enc and true or false
@@ -8258,7 +7944,7 @@ function decV(prop, enc)
     end
     return nil
 end
-function encInst(inst, prop)
+local function encInst(inst, prop)
     local k = PK[prop]
     local ok, v = pcall(function() return inst[prop] end)
     if not ok then return nil end
@@ -8269,13 +7955,13 @@ function encInst(inst, prop)
 end
 
 -- Model helpers
-LOCK = { HumanoidRootPart = true, RootPart = true, DWFlat = true }
-function pathOf(model, inst)
+local LOCK = { HumanoidRootPart = true, RootPart = true, DWFlat = true }
+local function pathOf(model, inst)
     local t, c = {}, inst
     while c and c ~= model do table.insert(t, 1, c.Name); c = c.Parent end
     return table.concat(t, "/")
 end
-function findPath(model, path)
+local function findPath(model, path)
     local c = model
     for part in tostring(path):gmatch("[^/]+") do
         if not c then return nil end
@@ -8283,7 +7969,7 @@ function findPath(model, path)
     end
     return c
 end
-function jointFor(inst)
+local function jointFor(inst)
     local second
     for _, d in ipairs(inst:GetChildren()) do
         if d:IsA("Motor6D") or d:IsA("Weld") or d:IsA("ManualWeld") then
@@ -8293,7 +7979,7 @@ function jointFor(inst)
     end
     return second
 end
-function identity(model)
+local function identity(model)
     local cfg = model and model:FindFirstChild("Config")
     local function sv(n) local v = cfg and cfg:FindFirstChild(n); return v and v.Value or nil end
     return {
@@ -8303,10 +7989,10 @@ function identity(model)
     }
 end
 -- WHERE TOONS LIVE. Lobby = workspace.Players, Game = workspace.InGamePlayers, Roleplay = auto-detected.
-PLACE_MODE = { [16116270224] = "Lobby", [16552821455] = "Game", [18984416148] = "Roleplay" }   -- verified live: Roleplay Mode is its own place and also uses workspace.Players
-RP_NAMES = { "RoleplayPlayers", "RoleplayCharacters", "RPPlayers", "RPCharacters", "RoleplayMode", "Roleplay" }
-function looksToon(m) return m:IsA("Model") and m:FindFirstChild("Config") ~= nil and m:FindFirstChild("Animations") ~= nil end
-function classify(folder)
+local PLACE_MODE = { [16116270224] = "Lobby", [16552821455] = "Game", [18984416148] = "Roleplay" }   -- verified live: Roleplay Mode is its own place and also uses workspace.Players
+local RP_NAMES = { "RoleplayPlayers", "RoleplayCharacters", "RPPlayers", "RPCharacters", "RoleplayMode", "Roleplay" }
+local function looksToon(m) return m:IsA("Model") and m:FindFirstChild("Config") ~= nil and m:FindFirstChild("Animations") ~= nil end
+local function classify(folder)
     -- Roleplay Mode (and any place we do not recognise) labels everything Roleplay, whatever the folder is called
     local pm = PLACE_MODE[game.PlaceId]
     if pm == nil or pm == "Roleplay" then return "Roleplay" end
@@ -8315,8 +8001,8 @@ function classify(folder)
     if folder.Name == "Players" then return "Lobby" end
     return "Roleplay"
 end
-rpFound, lastDiscover = {}, 0
-function rootsNow()
+local rpFound, lastDiscover = {}, 0
+local function rootsNow()
     local out, seen = {}, {}
     local function add(f) if f and f.Parent and not seen[f] then seen[f] = true; out[#out + 1] = { f = f, mode = classify(f) } end end
     add(workspace:FindFirstChild("InGamePlayers"))
@@ -8340,7 +8026,7 @@ function rootsNow()
     for f in pairs(rpFound) do if f.Parent then add(f) else rpFound[f] = nil end end
     return out
 end
-function findMine(roots)
+local function findMine(roots)
     for _, r in ipairs(roots) do
         local m = r.f ~= workspace and r.f:FindFirstChild(LP.Name)
         if m and m:IsA("Model") then return m, r.mode end
@@ -8348,7 +8034,7 @@ function findMine(roots)
     local ch = LP.Character
     if ch and ch.Parent and ch:FindFirstChild("Config") then return ch, classify(ch.Parent) end
 end
-function reqMismatch(req, id)
+local function reqMismatch(req, id)
     for _, k in ipairs({ "CharacterName", "ModuleName", "Skin" }) do
         local want = req and req[k]
         if want and want ~= "" and tostring(id[k] or "") ~= want then return k, want, id[k] end
@@ -8356,8 +8042,8 @@ function reqMismatch(req, id)
 end
 
 -- Library (toons the script has seen; filled automatically)
-Library = {}
-function serializeModel(model)
+local Library = {}
+local function serializeModel(model)
     local id = identity(model)
     local cfg = model:FindFirstChild("Config")
     local d = {
@@ -8381,12 +8067,12 @@ function serializeModel(model)
     return d
 end
 
-function keyOf(model)
+local function keyOf(model)
     local id = identity(model)
     return tostring(id.ModuleName or id.CharacterName or "Unknown") .. "__" .. tostring(id.Skin or "Default")
 end
-forceCaptureUntil = 0
-function captureModel(model, mode)
+local forceCaptureUntil = 0
+local function captureModel(model, mode)
     if not model:FindFirstChild("Config") then return end   -- only real toon models go in the library
     local prev = Library[keyOf(model)]
     -- already saved and already seen in this source: nothing new to learn
@@ -8416,7 +8102,7 @@ do
         end
     end
 end
-function libEntries()
+local function libEntries()
     local out = {}
     for _, e in pairs(Library) do out[#out + 1] = e end
     table.sort(out, function(a, b)
@@ -8425,10 +8111,10 @@ function libEntries()
     end)
     return out
 end
-function libLabel(e) return e.toon .. " (" .. e.skin .. ")" end
+local function libLabel(e) return e.toon .. " (" .. e.skin .. ")" end
 
 -- vote icons for ALL toons come straight from the game's own data
-function towerIcons()
+local function towerIcons()
     local out = {}
     local td = RS:FindFirstChild("TowerData")
     if td then
@@ -8443,10 +8129,10 @@ function towerIcons()
     return out
 end
 -- Context (everything we do to ONE character model, fully reversible)
-Ctx = {}
+local Ctx = {}
 Ctx.__index = Ctx
 
-function hookPart(c, p)
+local function hookPart(c, p)
     local con = p:GetPropertyChangedSignal("TextureID"):Connect(function()
         if c.guard then return end
         local m = c.texMap[p.TextureID]
@@ -8460,7 +8146,7 @@ function hookPart(c, p)
     c.hooks[#c.hooks + 1] = con
 end
 
-function newCtx(model, mine)
+local function newCtx(model, mine)
     local c = setmetatable({
         model = model, mine = mine, orig = {}, desired = {}, texMap = {}, revMap = {}, jointBase = {}, infoOf = {},
         created = {}, specIdOf = {}, createdSet = {}, mcreated = {}, weldOf = {}, hooks = {}, guard = false,
@@ -8652,8 +8338,8 @@ end
 -- Replacement animations use their own joint names. In local mode the real Animations folder is never changed:
 -- we read the replacement's keyframes ourselves and write them straight onto the matching bones/joints every frame.
 -- Bone.Transform is client-side only, so nothing here can replicate.
-ksCache = {}
-function prepareKS(ks)
+local ksCache = {}
+local function prepareKS(ks)
     local kfs = ks:GetKeyframes()
     table.sort(kfs, function(a, b) return a.Time < b.Time end)
     local frames, names = {}, {}
@@ -8670,7 +8356,7 @@ function prepareKS(ks)
     end
     return { frames = frames, length = (#frames > 0) and frames[#frames].t or 0, loop = ks.Loop, names = names }
 end
-function sampleKS(prep, t, out)
+local function sampleKS(prep, t, out)
     local fr = prep.frames
     local n = #fr
     if n == 0 then return end
@@ -8696,7 +8382,7 @@ function sampleKS(prep, t, out)
     end
 end
 -- src: an animation id, link or file -> cb(prepared keyframes | nil, error)
-function loadKS(src, cb)
+local function loadKS(src, cb)
     local kind, v = classifyAsset(src)
     if kind == "empty" then return cb(nil, "empty") end
     local key = (kind == "id") and v or nil
@@ -8868,7 +8554,7 @@ function Ctx:refreshJoint(inst)
     self:setD(j, prop, O:Inverse() * jb[prop])
 end
 
-function applyProp(ctx, inst, prop, enc)
+local function applyProp(ctx, inst, prop, enc)
     local props = ctx.infoOf[inst]
     if prop == "Hidden" then
         if enc then ctx:hide(inst) else ctx:unhide(inst) end
@@ -8888,7 +8574,7 @@ function applyProp(ctx, inst, prop, enc)
     end
 end
 
-function hideTargets(root)
+local function hideTargets(root)
     local out = { root }
     for _, d in ipairs(root:GetDescendants()) do out[#out + 1] = d end
     return out
@@ -9137,13 +8823,13 @@ function Ctx:applyFlat(f)
 end
 
 -- Working config
-function newCfg()
+local function newCfg()
     return { name = "", requires = {}, textures = {}, animations = {}, overrides = {}, added = {}, nextId = 1 }
 end
-W = { cfg = newCfg(), mine = nil, sel = nil, libSel = nil, others = {} }
-ctxs = {}   -- model -> ctx (others)
+local W = { cfg = newCfg(), mine = nil, sel = nil, libSel = nil, others = {} }
+local ctxs = {}   -- model -> ctx (others)
 
-function normCfg(c)
+local function normCfg(c)
     c = type(c) == "table" and c or {}
     local o = newCfg()
     o.name = tostring(c.name or "")
@@ -9158,12 +8844,12 @@ function normCfg(c)
     return o
 end
 
-function cfgHasContent(c)
+local function cfgHasContent(c)
     if c.flat or next(c.textures) or next(c.animations) or next(c.overrides) or #c.added > 0 then return true end
     return false
 end
 
-function applyConfig(ctx, cfg)
+local function applyConfig(ctx, cfg)
     ctx:revertAll()
     for k, src in pairs(cfg.textures) do
         if k == "Icon" then ctx:applyIcon(src) else ctx:applyTexture(k, src) end
@@ -9184,9 +8870,9 @@ function applyConfig(ctx, cfg)
     if cfg.flat and cfg.flat.enabled then ctx:applyFlat(cfg.flat) end
 end
 
-previewDirty = true
-refreshPages = function() end
-function reapply()
+local previewDirty = true
+local refreshPages = function() end
+local function reapply()
     if W.mine then applyConfig(W.mine, W.cfg) end
     previewDirty = true
     refreshPages()
@@ -9221,7 +8907,7 @@ do
 end
 
 -- Rules + binding your toon + capture loop
-function matchRule(id, isMe)
+local function matchRule(id, isMe)
     local best, bestScore
     for _, r in ipairs(S.rules) do
         if r.enabled and r.config and r.config ~= "" and (isMe or r.scope == "all") then
@@ -9238,22 +8924,22 @@ function matchRule(id, isMe)
     end
     return best
 end
-function loadRuleCfg(rule)
+local function loadRuleCfg(rule)
     local data = jsonDecode(readFile(CFG_DIR .. "/" .. rule.config .. ".json") or "")
     if type(data) ~= "table" then toast("Rule config '" .. tostring(rule.config) .. "' wasn't found.", "err"); return nil end
     return normCfg(data)
 end
 
-boundModel, mineMode = nil, nil
-capturedModels = {}
-rootCache = {}   -- mode -> { name, n }   (read by the Sources readouts)
+local boundModel, mineMode = nil, nil
+local capturedModels = {}
+local rootCache = {}   -- mode -> { name, n }   (read by the Sources readouts)
 
-function modelReady(m) return m:FindFirstChildWhichIsA("BasePart", true) ~= nil end
-function modelComplete(m)
+local function modelReady(m) return m:FindFirstChildWhichIsA("BasePart", true) ~= nil end
+local function modelComplete(m)
     return m:FindFirstChild("Config") and m:FindFirstChild("Animations") and m:FindFirstChild("Head") and m:FindFirstChild("Torso")
 end
 
-function bindMine(model, mode)
+local function bindMine(model, mode)
     if W.mine then W.mine:destroy() end
     W.mine = nil; W.sel = nil
     boundModel = model; mineMode = mode
@@ -9357,7 +9043,7 @@ task.spawn(function()
 end)
 
 -- keeps the game from undoing your edits (only runs real work when something is actually edited)
-function enforce(c)
+local function enforce(c)
     for inst, props in pairs(c.desired) do
         if inst.Parent then
             for prop, v in pairs(props) do
@@ -9387,7 +9073,7 @@ end)
 
 --#endregion customizer-engine
 --#region customizer-tab
-function targetsOf(model)
+local function targetsOf(model)
     local out = {}
     local function visit(inst, depth)
         local kids = inst:GetChildren()
@@ -9407,7 +9093,7 @@ function targetsOf(model)
     return out
 end
 
-function editProp(inst, prop, enc)
+local function editProp(inst, prop, enc)
     local ctx = W.mine
     if not ctx then return end
     local props = ctx.infoOf[inst]
@@ -9422,7 +9108,7 @@ function editProp(inst, prop, enc)
     previewDirty = true
 end
 
-function curEnc(inst, prop)
+local function curEnc(inst, prop)
     local ctx = W.mine
     local props = ctx and ctx.infoOf[inst]
     if props and props[prop] ~= nil then return props[prop] end
@@ -9432,12 +9118,12 @@ end
 
 
 -- Customizer tab (sections built from the hub's own control types, so it follows whichever skin is active)
-P = {
+local P = {
     texSlot = "Normal", texSrc = "", texState = {}, animName = nil, animSrc = "", animState = {}, imgState = { Normal = {}, Blink = {}, Hurt = {} }, part = nil, cfgSel = "", cfgName = "",
     spin = false, zoom = 1, pv = nil, panMode = false,
 }
-MODES = { "Lobby", "Game", "Roleplay" }
-function texSlots()            -- every face slot this toon has (Normal, Blink, Hurt, Face, Transform...), plus the voting icon
+local MODES = { "Lobby", "Game", "Roleplay" }
+local function texSlots()            -- every face slot this toon has (Normal, Blink, Hurt, Face, Transform...), plus the voting icon
     local out, seen = {}, {}
     local function add(k) if not seen[k] then seen[k] = true; out[#out + 1] = k end end
     for _, k in ipairs({ "Normal", "Blink", "Hurt" }) do if W.mine and W.mine.origTex[k] ~= nil then add(k) end end
@@ -9452,23 +9138,23 @@ function texSlots()            -- every face slot this toon has (Normal, Blink, 
     return out
 end
 
-function need()
+local function need()
     if not W.mine then toast("No character found yet. Join the lobby, a match or Roleplay Mode.", "err"); return false end
     return true
 end
-function short(s, n)
+local function short(s, n)
     s = tostring(s); n = n or 30
     if #s > n then return s:sub(1, n - 3) .. "..." end
     return s
 end
-function entriesFor(filter)
+local function entriesFor(filter)
     local out = {}
     for _, e in ipairs(libEntries()) do
         if filter == "All" or (type(e.srcs) == "table" and e.srcs[filter]) then out[#out + 1] = e end
     end
     return out
 end
-function toonOpts(kind, filter)       -- labels, map
+local function toonOpts(kind, filter)       -- labels, map
     local labels, map = {}, {}
     for _, e in ipairs(entriesFor(filter or "All")) do
         local ok = (kind == "tex" and next(e.tex) ~= nil) or (kind == "anim" and next(e.anims) ~= nil) or kind == nil
@@ -9476,8 +9162,8 @@ function toonOpts(kind, filter)       -- labels, map
     end
     return labels, map
 end
-function fileOpts(kind, folder) return fileOptions(kind, folder) end      -- entries starting with "(" are hints, not files
-function cfgList()
+local function fileOpts(kind, folder) return fileOptions(kind, folder) end      -- entries starting with "(" are hints, not files
+local function cfgList()
     local out = {}
     for _, p in ipairs(listDir(CFG_DIR)) do
         local n = baseName(p)
@@ -9486,8 +9172,8 @@ function cfgList()
     table.sort(out, function(a, b) return a:lower() < b:lower() end)
     return out
 end
-function curIdentity() return identity(W.mine and W.mine.model) end
-function loadCfgFile(n, force)
+local function curIdentity() return identity(W.mine and W.mine.model) end
+local function loadCfgFile(n, force)
     local data = jsonDecode(readFile(CFG_DIR .. "/" .. n .. ".json") or "")
     if type(data) ~= "table" then return false, "Couldn't read '" .. n .. "'." end
     local c = normCfg(data)
@@ -9500,7 +9186,7 @@ function loadCfgFile(n, force)
 end
 
 -- status ---------------------------------------------------------------
-function statusLine()
+local function statusLine()
     if W.mine then
         local id = identity(W.mine.model)
         return "safe", "Editing " .. tostring(id.CharacterName or "?") .. "  |  module " .. tostring(id.ModuleName or "?")
@@ -9511,7 +9197,7 @@ end
 
 -- The game keeps many finished toon models in memory (parented to nil). Capturing them fills the library without having to
 -- meet every toon in a match.
-function scanMemory()
+local function scanMemory()
     local ok, nils = pcall(getnilinstances)
     if not ok or type(nils) ~= "table" then return toast("This executor cannot list hidden instances.", "err") end
     toast("Scanning the game's memory for toon models...", "info")
@@ -9532,7 +9218,7 @@ function scanMemory()
     end)
 end
 -- textures -------------------------------------------------------------
-function texApply(src)
+local function texApply(src)
     if not need() then return end
     src = trim(src or "")
     if src == "" then return toast("Pick a file or enter an ID or link first.", "err") end
@@ -9540,7 +9226,7 @@ function texApply(src)
     if P.texSlot == "Icon" then W.mine:applyIcon(src) else W.mine:applyTexture(P.texSlot, src) end
     toast(P.texSlot .. " replaced.", "ok"); tspRefresh()
 end
-function iconOpts()
+local function iconOpts()
     local out = {}
     for _, t in ipairs(towerIcons()) do out[#out + 1] = "Toon icon: " .. t.name end
     for _, e in ipairs(libEntries()) do if e.icon then out[#out + 1] = "Seen: " .. libLabel(e) end end
@@ -9548,7 +9234,7 @@ function iconOpts()
 end
 
 -- animations -----------------------------------------------------------
-function animNames()
+local function animNames()
     local t = {}
     if W.mine then for n in pairs(W.mine.origAnim) do t[#t + 1] = n end end
     table.sort(t)
@@ -9556,7 +9242,7 @@ function animNames()
 end
 
 -- parts ----------------------------------------------------------------
-function partMap()
+local function partMap()
     local labels, map = {}, {}
     if W.mine then
         for _, t in ipairs(targetsOf(W.mine.model)) do
@@ -9566,28 +9252,28 @@ function partMap()
     end
     return labels, map
 end
-function partInst() local p = P.part; if p and p.Parent and W.mine and p:IsDescendantOf(W.mine.model) then return p end end
-function partProps(inst)
+local function partInst() local p = P.part; if p and p.Parent and W.mine and p:IsDescendantOf(W.mine.model) then return p end end
+local function partProps(inst)
     local ctx = W.mine
     return ctx and (ctx.infoOf[inst] or W.cfg.overrides[pathOf(ctx.model, inst)]) or nil
 end
-function colorProp(inst) return inst:IsA("BasePart") and "Color" or ((inst:IsA("Decal") or inst:IsA("Texture")) and "Color3" or nil) end
-function hasTransp(inst) return inst:IsA("BasePart") or inst:IsA("Decal") or inst:IsA("Texture") end
+local function colorProp(inst) return inst:IsA("BasePart") and "Color" or ((inst:IsA("Decal") or inst:IsA("Texture")) and "Color3" or nil) end
+local function hasTransp(inst) return inst:IsA("BasePart") or inst:IsA("Decal") or inst:IsA("Texture") end
 
 -- 2D character ---------------------------------------------------------
-function flatDefaults()
+local function flatDefaults()
     return {
         enabled = false, mode = "Decal", facing = "yaw", beamDir = "Top to bottom", attach = "RootPart",
         images = { Normal = "", Blink = "", Hurt = "", Back = "" }, width = 4, height = 4,
         offset = { 0, 0, 0 }, rot = { 0, 0, 0 }, hideBody = true, groundAlign = true, groundOffset = 0, pixelated = true, back = "same", backFlip = false, nameTag = "auto", nameLift = 0,
     }
 end
-FACING = { yaw = "Camera (yaw only)", full = "Camera (full)", fixed = "Fixed" }
-FACING_REV = { ["Camera (yaw only)"] = "yaw", ["Camera (full)"] = "full", ["Fixed"] = "fixed" }
-function flat() if not W.cfg.flat then W.cfg.flat = flatDefaults() end; return W.cfg.flat end
+local FACING = { yaw = "Camera (yaw only)", full = "Camera (full)", fixed = "Fixed" }
+local FACING_REV = { ["Camera (yaw only)"] = "yaw", ["Camera (full)"] = "full", ["Fixed"] = "fixed" }
+local function flat() if not W.cfg.flat then W.cfg.flat = flatDefaults() end; return W.cfg.flat end
 
 ----------------------------------------------------------------------
-function buildPage()
+local function buildPage()
     local secs = {}
 
     local CUSTOM_SRC = "Custom ID / Link..."
@@ -9921,7 +9607,7 @@ end
 -- Public API
 refreshPages = function() tspRefresh() end
 
-API = { build = buildPage, working = W }
+local API = { build = buildPage, working = W }
 function API.serialize()
     return { config = (W.cfg.name ~= "" and W.cfg.name) or nil,
         settings = { autoApply = S.autoApply, autoConfig = S.autoConfig, keepWorking = S.keepWorking, localAnims = S.localAnims, captureOthers = S.captureOthers,
@@ -9961,7 +9647,7 @@ end)(function(m, k) toast(m, k) end, function() if UI.current == "customizer" th
 -- Lives at UI.snd (no new top-level locals). The Sound tab (page-sound region) talks to it through that table.
 ----------------------------------------------------------------------
 UI.snd = (function()   -- one function scope: the main script is close to Lua's 200-locals limit, so this region adds NO top-level locals
-Snd = { K = {} }
+local Snd = { K = {} }
     local getasset = getcustomasset or getsynasset
     local httpReq  = request or http_request or (syn and syn.request) or (http and http.request)
     local SoundService = game:GetService("SoundService")
@@ -12018,12 +11704,12 @@ do
 --  * on-screen buttons live in their own ScreenGui, are drawn with the skin's own Button, and are rebuilt when the skin changes.
 --    Click = flip the toggle, drag = move, right-click = menu (remove). They light up while the toggle is on.
 ----------------------------------------------------------------------
-Binds = { map = {}, reg = {}, btns = {}, gui = nil, menuGui = nil, flash = nil }
+local Binds = { map = {}, reg = {}, btns = {}, gui = nil, menuGui = nil, flash = nil }
 UI.binds = Binds
 
-BIND_AMBIGUOUS = { Enabled = true, Fill = true }     -- toggle names that repeat in every section: the section name is added in front
+local BIND_AMBIGUOUS = { Enabled = true, Fill = true }     -- toggle names that repeat in every section: the section name is added in front
 
-function bindTab(tabId)
+local function bindTab(tabId)
     for _, t in ipairs(UI.tabs) do if t.id == tabId then return t end end
 end
 
@@ -12059,7 +11745,7 @@ function Binds.resolve(id)
     return Binds.reg[id]
 end
 
-function bindEntry(id)
+local function bindEntry(id)
     local m = Binds.map[id]
     if not m then
         local r = Binds.reg[id]
@@ -12068,12 +11754,12 @@ function bindEntry(id)
     end
     return m
 end
-function bindPrune(id)
+local function bindPrune(id)
     local m = Binds.map[id]
     if m and not m.key and not m.btn then Binds.map[id] = nil end
 end
 
-function bindGuiOn()
+local function bindGuiOn()
     if Binds.gui and Binds.gui.Parent then return Binds.gui end
     if not T then return nil end            -- the skin is not built yet (a config auto-loads before the hub exists)
     local g = New("ScreenGui", { Name = "TonyScriptPalaceButtons", ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -12103,7 +11789,7 @@ end
 Binds.kill = { armedUntil = 0 }
 Binds.killId = "binds|Do Not Press|Kill Me"
 do
-Kill, KILL_ID = Binds.kill, Binds.killId
+local Kill, KILL_ID = Binds.kill, Binds.killId
 
 function Kill.run()
     local ch = LP.Character
@@ -12173,10 +11859,10 @@ function Binds.onKey(name)
 end
 
 -- ---------------------------------------------------------------- the menu (lives in its own ScreenGui so it also works with the hub hidden)
-function bindCloseMenu()
+local function bindCloseMenu()
     if Binds.menuGui then pcall(function() Binds.menuGui:Destroy() end); Binds.menuGui = nil end
 end
-function bindMenu(title, items)
+local function bindMenu(title, items)
     bindCloseMenu()
     if not T then return end
     local g = New("ScreenGui", { Name = "TonyScriptPalaceMenu", ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -12207,20 +11893,20 @@ function bindMenu(title, items)
 end
 
 -- ---------------------------------------------------------------- on-screen buttons
-function bindNextPos()
+local function bindNextPos()
     local n = 0
     for _, m in pairs(Binds.map) do if m.btn then n += 1 end end
     return { x = 0.1 + 0.11 * math.floor(n / 8), y = 0.22 + 0.075 * (n % 8) }
 end
 
-function bindIsOn(id)
+local function bindIsOn(id)
     local e = Binds.reg[id]
     if not e then return false end
     local ok, v = pcall(e.c.get)
     return ok and v and true or false
 end
 
-function bindMakeButton(g, id, m)
+local function bindMakeButton(g, id, m)
     Binds.resolve(id)                   -- finds the toggle even when its page was never opened this session
     local on = bindIsOn(id)
     local label = m.label or id
@@ -12378,9 +12064,9 @@ Features.binds = {
 }
 
 -- ---------------------------------------------------------------- the Keybinds tab
-bindPick = { tab = "esp", label = nil }
+local bindPick = { tab = "esp", label = nil }
 
-function bindToggleList(tabId)
+local function bindToggleList(tabId)
     local out, seen = {}, {}
     local tab = bindTab(tabId)
     if not tab then return out end
@@ -12400,7 +12086,7 @@ function bindToggleList(tabId)
     return out
 end
 
-function buildBindsPage()
+local function buildBindsPage()
     local secs = {}
     -- Your binds
     local ids = {}
@@ -12541,7 +12227,7 @@ Features.customizer = { serialize = function() return Cust.serialize() end, appl
 Features.sound = { serialize = function() return UI.snd.serialize() end, apply = function(d) UI.snd.apply(d) end }
 
 -- puts a page's sections into rail groups: spec[title] = { g = group, t = shorter title, pin = keep it beside the other sections on wide windows }
-function grouped(build, spec)
+local function grouped(build, spec)
     return function()
         local secs = build()
         for _, sec in ipairs(secs) do
@@ -12557,7 +12243,7 @@ function grouped(build, spec)
     end
 end
 
-ESP_GROUPS = {
+local ESP_GROUPS = {
     ["General"] = { g = "Basics" },
     ["Toons"] = { g = "Players" },
     ["Ichorlings"] = { g = "Players" },
@@ -12571,25 +12257,25 @@ ESP_GROUPS = {
     ["Twisted Razzle & Dazzle's Vines"] = { g = "Hazards", r = "Razzle's Vines" },   -- the full name is 156px wide in some skins, the rail text area is 148px
     ["Ichor Puddles"] = { g = "Hazards" },
 }
-SKILL_GROUPS = {
+local SKILL_GROUPS = {
     ["More Skill Checks"] = { g = "Basics", t = "Main" }, ["Live Values"] = { g = "Basics" },
     ["Size, Speed, Chance And Value"] = { g = "Tuning", t = "Size, Speed, Chance" }, ["Per-Twisted Changes"] = { g = "Tuning" },
     ["Green/Yellow Rewards"] = { g = "Tuning" }, ["Failure Penalties"] = { g = "Tuning" },
     ["Stacking"] = { g = "Extras" }, ["Trinkets"] = { g = "Extras" }, ["Treadmill Failure And Icons"] = { g = "Extras", t = "Treadmill And Icons" },
 }
-PURSUER_GROUPS = {
+local PURSUER_GROUPS = {
     ["Pursuer (Custom Chaser)"] = { g = "Setup", t = "Main" }, ["Pursuer: Saved Pursuers"] = { g = "Setup", t = "Saved Pursuers" },
     ["Pursuer: Look And Preview"] = { g = "Setup", t = "Look And Preview" },
     ["Pursuer: Movement And Speed"] = { g = "Behavior", t = "Movement And Speed" }, ["Pursuer: Dash"] = { g = "Behavior", t = "Dash" }, ["Pursuer: Spawning"] = { g = "Behavior", t = "Spawning" },
     ["Pursuer: Chase Alert"] = { g = "Extras", t = "Chase Alert" }, ["Pursuer: Sounds"] = { g = "Extras", t = "Sounds" }, ["Pursuer: Afterimages"] = { g = "Extras", t = "Afterimages" },
 }
-CUSTOMIZER_GROUPS = {
+local CUSTOMIZER_GROUPS = {
     ["Preview"] = { g = "View", pin = true },
     ["Status"] = { g = "Model" }, ["Model Sources"] = { g = "Model" },
     ["Textures"] = { g = "Look" }, ["Animations"] = { g = "Look" }, ["Parts"] = { g = "Look" }, ["2D Character"] = { g = "Look" },
     ["Customizer Configs"] = { g = "Library" }, ["Files & Library"] = { g = "Library" },
 }
-SOUND_GROUPS = {
+local SOUND_GROUPS = {
     ["Player"] = { g = "Music" }, ["Songs"] = { g = "Music" }, ["Song Editor"] = { g = "Music" },
     ["Sound Effects"] = { g = "Effects" }, ["Effect Editor"] = { g = "Effects" },
     ["Game Sound Replacement"] = { g = "Game Audio", t = "Replace Sounds" }, ["Replacement Editor"] = { g = "Game Audio" },
@@ -12609,7 +12295,6 @@ UI.cats = {
 UI.tabs = {
     -- Gameplay
     { id = "esp",        name = "ESP",          cat = "gameplay", icon = "esp",        build = grouped(buildESPPage, ESP_GROUPS) },
-    { id = "twistedvis", name = "Visualizers",  cat = "gameplay", icon = "esp",        build = grouped(function() return Features.twistedvis.build() end, { ["Radius Visualizers"] = { g = "Twisteds" }, ["Chasing Indicators"] = { g = "Twisteds" } }) },
     { id = "movement",   name = "Movement",     cat = "gameplay", icon = "movement",   build = buildMovementPage },
     { id = "world",      name = "World",        cat = "gameplay", icon = "world",      build = buildWorldPage },
     { id = "screen",     name = "Screen",       cat = "gameplay", icon = "esp",        build = buildScreenPage },
@@ -12662,7 +12347,7 @@ function applyLayout()
     if Grip then Grip.Visible = not S.fullscreen end
 end
 
-function makeDraggable(handle)
+local function makeDraggable(handle)
     handle.InputBegan:Connect(function(i)
         if isPress(i) and not S.fullscreen then
             local sp, wp = i.Position, Win.Position
@@ -12678,7 +12363,7 @@ function makeDraggable(handle)
     end)
 end
 
-function makeGrip()
+local function makeGrip()
     Grip = New("TextButton", { Name = "Grip", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1),
         Position = UDim2.new(1, -4, 1, -4), Size = UDim2.fromOffset(22, 22), ZIndex = 10 }, Win)
     for r = 0, 2 do
@@ -12705,7 +12390,7 @@ function makeGrip()
     end)
 end
 
-function makeOrb()
+local function makeOrb()
     local aero = T.kind == "aero"
     local xp = T.kind == "xp"
     Orb = New("TextButton", { Name = "Orb", Text = "", AutoButtonColor = false, BackgroundColor3 = WHITE, Size = UDim2.fromOffset(46, 46),
@@ -12749,7 +12434,7 @@ end
 --#endregion window-behaviour
 --#region skin-dandy
 -- Skin: Dandy's World (default)
-function buildDandyChrome()
+local function buildDandyChrome()
     local c = T.c
     Win.BackgroundColor3 = c.panel; Win.ClipsDescendants = true
     corner(Win, 14)
@@ -12824,7 +12509,7 @@ end
 --#endregion skin-dandy
 --#region skin-aero
 -- Skin: Frutiger Aero
-function buildAeroChrome()
+local function buildAeroChrome()
     local c = T.c
     Win.ClipsDescendants = true
     corner(Win, 18); stroke(Win, WHITE, 2.5, 0.15)
@@ -12912,7 +12597,7 @@ end
 --#endregion skin-aero
 --#region skin-xmb
 -- Skin: XMB / PlayStation
-function drawIcon(parent, id)
+local function drawIcon(parent, id)
     local function circ(x, y, d, filled, th)
         local f = New("Frame", { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(d, d), BackgroundColor3 = WHITE,
             BackgroundTransparency = filled and 0 or 1, BorderSizePixel = 0 }, parent)
@@ -12957,7 +12642,7 @@ function drawIcon(parent, id)
     end
 end
 
-function buildXMBChrome()
+local function buildXMBChrome()
     local c = T.c
     corner(Win, 12); stroke(Win, WHITE, 1.5, 0.6)
     Win.ClipsDescendants = true
@@ -13088,7 +12773,7 @@ end
 --#endregion skin-xmb
 --#region skin-xp
 -- Skin: Windows XP Luna
-function buildXPChrome()
+local function buildXPChrome()
     local c = T.c
     Win.BackgroundColor3 = c.title:Lerp(BLACK, 0.12)   -- the thick Luna window frame
     corner(Win, 9)
@@ -13231,7 +12916,6 @@ function buildGui()
 end
 
 --#endregion build-gui
-print("[TonyScriptPalace] Reached boot section")
 --#region boot
 -- Input + boot + cleanup
 connect(UIS.InputChanged, function(i)
@@ -13241,7 +12925,7 @@ connect(UIS.InputChanged, function(i)
 end)
 connect(UIS.InputEnded, function(i) if isPress(i) then activeDrag = nil end end)
 
-function mouseOverWin()
+local function mouseOverWin()
     if not (Win and Win.Visible) then return false end
     local m, p, s = UIS:GetMouseLocation(), Win.AbsolutePosition, Win.AbsoluteSize
     return m.X >= p.X and m.X <= p.X + s.X and m.Y >= p.Y and m.Y <= p.Y + s.Y
@@ -13256,7 +12940,7 @@ connect(UIS.InputBegan, function(i, gp)
         end
         return
     end
-    if i.UserInputType ~= Enum.UserInputType.Keyboard then return end -- ignore gp for keybind reliability
+    if gp or i.UserInputType ~= Enum.UserInputType.Keyboard then return end
     if i.KeyCode.Name == S.keybind then
         UI.setVisible(not UI.visible)
     elseif UI.binds and UI.binds.onKey(i.KeyCode.Name) then
@@ -13283,7 +12967,6 @@ function Destroy()
     for _, cn in ipairs(conns) do pcall(function() cn:Disconnect() end) end
     for _, cn in ipairs(guiConns) do pcall(function() cn:Disconnect() end) end
     pcall(ESP.Unload)
-    pcall(Features.twistedvis.unload)
     pcall(Fun.Unload)
     pcall(SP.Unload)
     pcall(Auto.Unload)
@@ -13304,25 +12987,9 @@ if S.autoload and S.lastConfig ~= "" and fileExists(cfgPath(S.lastConfig)) then
     pcall(loadConfig, S.lastConfig)
 end
 
-print("[TonyScriptPalace] Calling buildGui()...")
 buildGui()
-print("[TonyScriptPalace] buildGui() returned. UI.visible = " .. tostring(UI.visible) .. ", Win = " .. tostring(Win))
 DWAPI.load()
 if S.style == "xmb" or S.style == "xp" then uiWhenReady("boot") end
-print("[TonyScriptPalace] Forcing GUI visible...")
-UI.setVisible(true)
-toast("Tony Script Palace ready. Press " .. S.keybind .. " to toggle (forced visible).", "info")
+toast("Tony Script Palace ready (Dandy's World only). Press " .. S.keybind .. " to hide or show.", "info")
 
 --#endregion boot
-print("[TonyScriptPalace] Protected block finished without error")
-end, function(err)
-    reportError(err, debug.traceback())
-    return err
-end)
-
-if ok then
-    print("[TonyScriptPalace] Script fully loaded. GUI should appear or press RightShift.")
-else
-    print("[TonyScriptPalace] Script failed - see error above.")
-end
-
